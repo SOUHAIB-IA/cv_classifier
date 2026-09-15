@@ -1,0 +1,8 @@
+# your machine, your data — never committed
+config.toml
+data/
+*.pdf
+
+.venv/
+__pycache__/
+*.pyc

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CV Router</title>
+<style>
+  :root{
+    --bg:#f6f6f4; --card:#fff; --ink:#1c1b19; --muted:#6b6862;
+    --line:#e2e0da; --accent:#3d5a3d; --accent-soft:#eef3ee;
+    --warn:#8a5a1f; --warn-soft:#fdf4e6; --bad:#8a2f2f; --bad-soft:#fbeeee;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#16171a; --card:#1e2024; --ink:#e9e7e3; --muted:#9b978f;
+           --line:#2f3238; --accent:#8fbf8f; --accent-soft:#1f2a1f;
+           --warn:#d9a441; --warn-soft:#2a2316; --bad:#e08585; --bad-soft:#2a1a1a; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+        padding:18px;margin-bottom:16px}
+  textarea{width:100%;min-height:200px;padding:12px;border:1px solid var(--line);
+           border-radius:8px;background:var(--bg);color:var(--ink);
+           font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+  button{margin-top:12px;background:var(--accent);color:#fff;border:0;
+         border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer}
+  button:hover{filter:brightness(1.08)}
+  button[disabled]{opacity:.55;cursor:progress}
+  .best{border-left:3px solid var(--accent);background:var(--accent-soft)}
+  .path{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+        word-break:break-all;font-weight:600}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;
+     color:var(--muted);margin:0 0 10px;font-weight:600}
+  .score{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+  .score b{font-size:32px;line-height:1}
+  .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:8px 0 4px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12px;padding:3px 9px;border-radius:20px;border:1px solid var(--line)}
+  .chip.ok{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+  .chip.no{background:var(--bad-soft);border-color:transparent;color:var(--bad)}
+  .chg{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px}
+  .chg .hd{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+       padding:2px 7px;border-radius:4px}
+  .high{background:var(--bad-soft);color:var(--bad)}
+  .medium{background:var(--warn-soft);color:var(--warn)}
+  .low{background:var(--accent-soft);color:var(--accent)}
+  .sec{font-weight:600;font-size:14px}
+  .was,.now{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+            padding:8px 10px;border-radius:6px;margin:4px 0;white-space:pre-wrap}
+  .was{background:var(--bad-soft);color:var(--bad);text-decoration:line-through;
+       text-decoration-color:rgba(138,47,47,.4)}
+  .now{background:var(--accent-soft);color:var(--ink)}
+  .why{font-size:12.5px;color:var(--muted);margin-top:6px}
+  ul{margin:0;padding-left:18px} li{margin-bottom:5px}
+  .err{background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad);
+       padding:12px;border-radius:8px;font-size:13px}
+  .foot{color:var(--muted);font-size:12px;margin-top:8px}
+  .hint{color:var(--muted);font-size:12px;margin-top:10px}
+  code{font-size:12.5px;background:var(--bg);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CV Router</h1>
+  <div class="sub">{{ n_cvs }} CV indexés — {{ cv_root }}</div>
+
+  <form method="post" class="card" onsubmit="this.q.disabled=true;this.q.textContent='Analyse en cours…'">
+    <h2>Description du poste</h2>
+    <textarea name="job" placeholder="Collez ici l'annonce complète…">{{ job }}</textarea>
+    <button name="q" type="submit">Trouver le meilleur CV</button>
+    <div class="hint">Deux appels modèle : présélection sur l'index, puis lecture
+      intégrale des 5 meilleurs candidats.</div>
+  </form>
+
+  {% if error %}<div class="err"><b>Erreur :</b> {{ error }}</div>{% endif %}
+
+  {% if result %}
+    {% set r = result %}
+    <div class="card best">
+      <h2>CV à envoyer</h2>
+      <div class="path">{{ r.best.path }}</div>
+      <p style="margin:10px 0 0">{{ r.best.why }}</p>
+    </div>
+
+    <div class="card">
+      <h2>Score ATS estimé</h2>
+      <div class="score"><b>{{ r.ats_score }}</b><span style="color:var(--muted)">/ 100</span></div>
+      <div class="bar"><i style="width:{{ r.ats_score }}%"></i></div>
+      <div class="foot">{{ r.score_reason }}</div>
+    </div>
+
+    <div class="card">
+      <h2>Mots-clés couverts</h2>
+      <div class="chips">
+        {% for k in r.matched_keywords %}<span class="chip ok">{{ k }}</span>{% endfor %}
+      </div>
+      {% if r.missing_keywords %}
+      <h2 style="margin-top:16px">Manquants ou trop faibles</h2>
+      <div class="chips">
+        {% for k in r.missing_keywords %}<span class="chip no">{{ k }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Changements à faire avant d'envoyer</h2>
+      {% for c in r.key_changes %}
+        <div class="chg">
+          <div class="hd">
+            <span class="tag {{ c.priority }}">{{ c.priority }}</span>
+            <span class="sec">{{ c.section }}</span>
+          </div>
+          <div class="was">{{ c.current }}</div>
+          <div class="now">{{ c.suggested }}</div>
+          <div class="why">→ {{ c.why }}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if r.red_flags %}
+    <div class="card">
+      <h2>Points de vigilance</h2>
+      <ul>{% for f in r.red_flags %}<li>{{ f }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Second choix</h2>
+      <div class="path">{{ r.runner_up.path }}</div>
+      <p style="margin:8px 0 0">{{ r.runner_up.why }}</p>
+    </div>
+
+    {% if r.cover_letter_hook %}
+    <div class="card">
+      <h2>Accroche lettre de motivation</h2>
+      <p style="margin:0">{{ r.cover_letter_hook }}</p>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Présélection</h2>
+      <div class="foot">{{ r._shortlist_reason }}</div>
+      <ul style="margin-top:8px">
+        {% for p in r._shortlist %}<li><code>{{ p }}</code></li>{% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+</body>
+</html>

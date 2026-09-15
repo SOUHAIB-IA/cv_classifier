@@ -1,0 +1,73 @@
+[paths]
+cv_root    = "~/Documents/CVs"            # where your sorted CVs live
+watch_dir  = "~/Downloads"                # folder to watch
+index_file = "data/index.json"
+log_file   = "data/cv-router.log"
+# PDFs that are not CVs, or not yours, are left untouched in watch_dir.
+# Content-duplicates of an already-filed CV go here instead of the collection.
+dupe_dir   = "~/Documents/CVs/_Duplicates-auto"
+
+[ai]
+# "claude_cli" runs the local Claude Code binary — uses your Claude subscription,
+# no API key needed. "api" uses the Anthropic API and needs a paid key.
+backend    = "claude_cli"
+
+# --- claude_cli backend ---
+cli_model  = "sonnet"   # sonnet | haiku | opus
+claude_bin = ""         # "" = auto-detect the newest install
+timeout    = 240        # seconds per call
+
+# --- api backend ---
+model      = "claude-sonnet-5"
+# Read from $ANTHROPIC_API_KEY, else from this file (one line, the key).
+key_file   = "~/.config/cv-router/api_key"
+max_tokens = 4000
+
+[behaviour]
+owner_name     = "Ada"                    # your first name
+owner_surname  = "LOVELACE"               # your surname
+# Filename prefix; defaults to "<owner_name>-<owner_surname>".
+file_prefix    = ""
+# Extra regex alternation for contact-detail lines to ignore when looking for
+# the job title near the top of a CV — typically the cities you put on your CV.
+headline_noise = "casablanca|rabat|maroc|morocco"
+
+# Below this confidence the file is left in watch_dir and only logged.
+min_confidence = 0.6
+# Seconds to wait after a file appears, so the browser finishes writing it.
+settle_seconds = 3.0
+dry_run        = false
+
+[portal]
+host = "127.0.0.1"
+port = 8770
+
+[notify]
+# Desktop notifications via notify-send.
+enabled      = true
+on_filed     = true    # a CV was filed
+on_duplicate = true    # a re-download of a CV already in the collection
+on_lowconf   = true    # left in Downloads because the call was too close
+on_skipped   = false   # not a CV / someone else's — usually just noise
+on_error     = true
+
+[taxonomy]
+# YOUR filing system. Edit freely — the tool reads it from here, never from code.
+# The model is told these folder names and picks one per CV.
+
+# Career stage. Describe each in terms of the WORDS a CV uses, not dates.
+[taxonomy.branches]
+"1-Student-Internship" = "The CV calls the owner a student ('student', 'Élève ingénieur', 'Étudiant', 'Final Year Student') or asks for an internship / PFE / stage."
+"2-Graduate" = "The CV presents the owner as done studying ('graduate', 'Ingénieur diplômé') or simply states a job title, with no student wording and no internship request."
+
+# Specialty folder -> short role slug used in the filename.
+[taxonomy.roles]
+"AI-ML-Engineering"     = "AI-ML-Engineer"
+"Data-Engineering"      = "Data-Engineer"
+"Data-Science-General"  = "Data-Scientist"
+"MLOps-DevOps"          = "MLOps-DevOps"
+"Software-Engineering"  = "Software-Engineer"
+
+# Optional: specialties split into per-language subfolders.
+[taxonomy.lang_split]
+"Data-Science-General" = { FR = "Francais", EN = "English" }

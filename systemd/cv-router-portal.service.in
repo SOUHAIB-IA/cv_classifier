@@ -1,0 +1,14 @@
+[Unit]
+Description=cv-router portal — paste a job ad, get the right CV
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@WORKDIR@
+ExecStart=@PYTHON@ portal.py
+EnvironmentFile=-%h/.config/cv-router/env
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
