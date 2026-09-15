@@ -519,8 +519,11 @@ Fields:
 """
 
 
-def classify_pdf(cfg: Config, path: Path) -> dict:
-    text = pdf_text(path)
+def classify_pdf(cfg: Config, path: Path, text: str | None = None) -> dict:
+    """Ask the model to place one PDF. Pass `text` if you already extracted it,
+    so a caller that pre-screened the document does not pay for it twice."""
+    if text is None:
+        text = pdf_text(path)
     if len(text.strip()) < 120:
         return {"is_cv": False, "reason": "no extractable text (scan or empty)",
                 "confidence": 1.0}

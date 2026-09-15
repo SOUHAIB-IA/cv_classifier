@@ -94,6 +94,16 @@ class Router:
             with self._claim_lock:
                 self._inflight.discard(key)
 
+    def _file_duplicate(self, path: Path, dup: str) -> None:
+        self.cfg.dupe_dir.mkdir(parents=True, exist_ok=True)
+        target = self.cfg.dupe_dir / cr.unique_name(self.cfg.dupe_dir, path.stem)
+        self.log.info("duplicate of %s -> %s (no model call)", dup, target.name)
+        if not self.dry_run:
+            shutil.move(str(path), str(target))
+        cr.notify(self.cfg, "duplicate", "cv-router: doublon",
+                  f"{path.name}\nMême contenu que « {Path(dup).name} ».\n"
+                  f"Déplacé dans _Duplicates-auto/")
+
     def _handle(self, path: Path) -> None:
         if not self._settled(path):
             # Usually the browser's temp name being renamed to the real one;
@@ -105,8 +115,26 @@ class Router:
         if self._already_done(self._fingerprint(path)):
             return
 
+        # Everything that can be decided from the text alone is decided here,
+        # BEFORE the model call — a call costs 10-40s and a slice of the plan's
+        # usage allowance, so a re-download of a CV already on file must not
+        # pay for one.
+        text = cr.pdf_text(path)
+        if len(text.strip()) < 120:
+            self.log.info("not a CV, left alone: %s (no extractable text)",
+                          path.name)
+            cr.notify(self.cfg, "skipped", "cv-router: pas un CV",
+                      f"{path.name}\nAucun texte extractible (scan ?)")
+            return
+
+        sig = cr.content_sig(text)
+        dup = self.index.find_by_sig(sig)
+        if dup:
+            self._file_duplicate(path, dup)
+            return
+
         try:
-            res = cr.classify_pdf(self.cfg, path)
+            res = cr.classify_pdf(self.cfg, path, text=text)
         except cr.AIError as e:
             self.log.error("AI unavailable, leaving %s in place: %s", path.name, e)
             cr.notify(self.cfg, "error", "cv-router: IA indisponible",
@@ -138,20 +166,6 @@ class Router:
             cr.notify(self.cfg, "lowconf",
                       f"cv-router: doute ({conf:.0%}) — à classer à la main",
                       f"{path.name} laissé dans Downloads.\n{res.get('reason', '')}")
-            return
-
-        # Already have this exact content?
-        dup = self.index.find_by_sig(res["_sig"])
-        if dup:
-            self.cfg.dupe_dir.mkdir(parents=True, exist_ok=True)
-            target = self.cfg.dupe_dir / cr.unique_name(
-                self.cfg.dupe_dir, path.stem)
-            self.log.info("duplicate of %s -> %s", dup, target.name)
-            if not self.dry_run:
-                shutil.move(str(path), str(target))
-            cr.notify(self.cfg, "duplicate", "cv-router: doublon",
-                      f"{path.name}\nMême contenu que « {Path(dup).name} ».\n"
-                      f"Déplacé dans _Duplicates-auto/")
             return
 
         folder, name = cr.destination(self.cfg, res)

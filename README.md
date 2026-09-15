@@ -104,6 +104,23 @@ notification. The tool never deletes anything.
 Duplicate detection hashes the **extracted text**, not the bytes: two exports of
 the same CV from the same builder have different bytes but identical text.
 
+### What actually costs a model call
+
+Not every download does. Everything decidable from the text alone is decided
+first, so a call is only made for a PDF that is genuinely new:
+
+| Downloaded | Model calls |
+|---|---|
+| a CV you don't have yet | 1 |
+| a re-download of a CV already filed | 0 — matched on text signature |
+| a scanned / image-only PDF | 0 — no text to send |
+| a partial download (`.crdownload`, `.part`) | 0 |
+| anything that isn't a PDF | 0 |
+| a file you left in the folder, on later events | 0 — fingerprinted |
+
+So an idle watcher costs nothing, and re-exporting the same CV five times from a
+CV builder costs one call, not five.
+
 Filenames come out as:
 
 ```
@@ -238,7 +255,7 @@ If that is not acceptable for your documents, do not use this.
 - **Scanned PDFs are skipped.** Extraction is `pdftotext`; an image-only PDF
   yields nothing and stays in Downloads. Add OCR if you need it.
 - **The CLI backend is slow** — 10–40s per call — and it consumes your Claude
-  plan's usage allowance. One download is one call; indexing 90 CVs is 90.
+  plan's usage allowance. Indexing 90 CVs is 90 calls.
 - The watcher watches the top level of the download folder, not subfolders.
 - The portal UI and the notification text are in French. Everything else — code,
   comments, config, prompts — is English.

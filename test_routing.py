@@ -72,23 +72,23 @@ def main():
     print("\n3. a non-CV PDF is left alone")
     cr.ask_json = lambda *a, **k: {"is_cv": False, "reason": "invoice",
                                    "confidence": 0.99}
-    other = watch / "facture.pdf"
-    shutil.copy(REAL_CV, other)
+    other = testkit.make_pdf(watch / "facture.pdf",
+                             ["Acme Ltd", "Invoice 2026-114"] + testkit.SAMPLE_TEXT[3:])
     W.Router(cfg).handle(other)
     check("left in Downloads", other.exists())
 
     print("\n4. someone else's CV is left alone")
     cr.ask_json = lambda *a, **k: {"is_cv": True, "is_owner": False,
                                    "reason": "different person", "confidence": 0.95}
-    mate = watch / "someone-else.pdf"
-    shutil.copy(REAL_CV, mate)
+    mate = testkit.make_pdf(watch / "someone-else.pdf",
+                            ["Grace HOPPER", "Compiler Engineer"] + testkit.SAMPLE_TEXT[3:])
     W.Router(cfg).handle(mate)
     check("left in Downloads", mate.exists())
 
     print("\n5. low confidence is left alone")
     cr.ask_json = lambda *a, **k: dict(FAKE, confidence=0.2)
-    meh = watch / "incertain.pdf"
-    shutil.copy(REAL_CV, meh)
+    meh = testkit.make_pdf(watch / "incertain.pdf",
+                           ["Alan TURING", "Unclear title"] + testkit.SAMPLE_TEXT[3:])
     W.Router(cfg).handle(meh)
     check("left in Downloads", meh.exists())
 
@@ -105,12 +105,12 @@ def main():
     import time as _t
     cr.ask_json = lambda *a, **k: dict(FAKE, qualifier="Recur")
     r7 = W.Router(cfg)
-    again = watch / "meme-nom.pdf"
-    shutil.copy(REAL_CV, again)
+    lines = ["Ada LOVELACE", "Recurring Role"] + testkit.SAMPLE_TEXT[3:]
+    again = testkit.make_pdf(watch / "meme-nom.pdf", lines)
     r7.handle(again)
     check("first one filed", not again.exists())
     _t.sleep(0.05)
-    shutil.copy(REAL_CV, again)          # same name, new download
+    testkit.make_pdf(watch / "meme-nom.pdf", lines)   # same name, downloaded again
     r7.handle(again)
     check("second one not ignored", not again.exists())
 
@@ -123,11 +123,46 @@ def main():
 
     cr.ask_json = _counting
     r8 = W.Router(cfg)
-    stays = watch / "facture2.pdf"
-    shutil.copy(REAL_CV, stays)
+    stays = testkit.make_pdf(watch / "facture2.pdf",
+                             ["Acme Ltd", "Invoice 2026-115"] + testkit.SAMPLE_TEXT[3:])
     for _ in range(4):
         r8.handle(stays)
     check("classified once, not four times", calls["n"] == 1)
+
+    # A model call costs 10-40s and part of the plan allowance, so everything
+    # decidable from the text alone must be decided before one is made.
+    print("\n9. only a genuinely new CV costs a model call")
+    calls = {"n": 0}
+
+    def _count(*a, **k):
+        calls["n"] += 1
+        return dict(FAKE, qualifier="Cost")
+
+    cr.ask_json = _count
+    r9 = W.Router(cfg)
+
+    def spent(fn):
+        before = calls["n"]
+        fn()
+        return calls["n"] - before
+
+    fresh = testkit.make_pdf(tmp / "fresh.pdf", ["Ada LOVELACE", "AI/ML Engineer"]
+                             + testkit.SAMPLE_TEXT[3:])
+    a = watch / "new.pdf"
+    shutil.copy(fresh, a)
+    check("new CV costs one call", spent(lambda: r9.handle(a)) == 1)
+
+    b = watch / "same-again.pdf"
+    shutil.copy(fresh, b)
+    check("re-download costs none", spent(lambda: r9.handle(b)) == 0)
+
+    scan = watch / "scan.pdf"
+    scan.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    check("text-less PDF costs none", spent(lambda: r9.handle(scan)) == 0)
+
+    nope = watch / "note.docx"
+    nope.write_bytes(b"x")
+    check("non-PDF costs none", spent(lambda: r9.handle(nope)) == 0)
 
     shutil.rmtree(tmp)
     print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
