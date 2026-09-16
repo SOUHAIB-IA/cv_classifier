@@ -65,6 +65,8 @@ def temp_config(**overrides) -> tuple[cr.Config, Path]:
     cfg.dupe_dir = tmp / "dupes"
     cfg.index_file = tmp / "index.json"
     cfg.log_file = tmp / "log.txt"
+    cfg.seen_file = tmp / "seen.json"          # never touch the real store
+    cfg.text_cache_dir = tmp / "textcache"
     cfg.settle_seconds = 0.01
     cfg.notify = {"enabled": False}
     for d in (cfg.cv_root, cfg.watch_dir, cfg.dupe_dir):

@@ -33,10 +33,10 @@ class Router:
         # modified / moved events a single download fires.
         self._inflight: set[str] = set()
         # Identities already dealt with, so a file we deliberately left in
-        # Downloads is not re-classified on every later event. Keyed on
-        # path+size+mtime, NOT on path alone: browsers reuse filenames, and a
-        # fresh download of an old name must still be processed.
-        self._done: dict[str, float] = {}
+        # Downloads is not re-classified on every later event, nor on every
+        # restart. Keyed on path+size+mtime, NOT on path alone: browsers reuse
+        # filenames, and a fresh download of an old name must still be processed.
+        self._seen = cr.SeenStore(cfg)
         # The observer thread and the startup sweep both call handle(), so the
         # claim and every index mutation have to be atomic.
         self._claim_lock = threading.Lock()
@@ -47,15 +47,15 @@ class Router:
         st = path.stat()
         return f"{path.resolve()}|{st.st_size}|{st.st_mtime_ns}"
 
-    def _already_done(self, fp: str) -> bool:
-        with self._claim_lock:
-            if fp in self._done:
-                return True
-            if len(self._done) > 2000:          # keep the newest half
-                for k in sorted(self._done, key=self._done.get)[:1000]:
-                    del self._done[k]
-            self._done[fp] = time.time()
-            return False
+    def _already_done(self, fp: str) -> str | None:
+        """The verdict reached for this exact file before, if any."""
+        return self._seen.verdict(fp)
+
+    def _remember(self, fp: str, verdict: str) -> None:
+        """Persist a verdict — never from a dry run, which must leave no trace
+        that would make the next real run skip the file."""
+        if not self.dry_run:
+            self._seen.remember(fp, verdict)
 
     # -- helpers ----------------------------------------------------------
     def _settled(self, path: Path) -> bool:
@@ -112,15 +112,19 @@ class Router:
             return
 
         # Only now is the file whole, so only now is its identity stable.
-        if self._already_done(self._fingerprint(path)):
+        fp = self._fingerprint(path)
+        prior = self._already_done(fp)
+        if prior:
+            self.log.debug("already decided (%s), skipping: %s", prior, path.name)
             return
 
         # Everything that can be decided from the text alone is decided here,
         # BEFORE the model call — a call costs 10-40s and a slice of the plan's
         # usage allowance, so a re-download of a CV already on file must not
         # pay for one.
-        text = cr.pdf_text(path)
+        text = cr.pdf_text_cached(self.cfg, path)
         if len(text.strip()) < 120:
+            self._remember(fp, "no-text")
             self.log.info("not a CV, left alone: %s (no extractable text)",
                           path.name)
             cr.notify(self.cfg, "skipped", "cv-router: pas un CV",
@@ -147,12 +151,14 @@ class Router:
             return
 
         if not res.get("is_cv"):
+            self._remember(fp, "not-a-cv")
             self.log.info("not a CV, left alone: %s (%s)",
                           path.name, res.get("reason", ""))
             cr.notify(self.cfg, "skipped", "cv-router: pas un CV",
                       f"{path.name}\n{res.get('reason', '')}")
             return
         if not res.get("is_owner"):
+            self._remember(fp, "not-owner")
             self.log.info("someone else's CV, left alone: %s (%s)",
                           path.name, res.get("reason", ""))
             cr.notify(self.cfg, "skipped", "cv-router: CV d'une autre personne",
@@ -161,6 +167,7 @@ class Router:
 
         conf = float(res.get("confidence") or 0)
         if conf < self.cfg.min_confidence:
+            self._remember(fp, "low-confidence")
             self.log.warning("low confidence %.2f, left alone: %s (%s)",
                              conf, path.name, res.get("reason", ""))
             cr.notify(self.cfg, "lowconf",

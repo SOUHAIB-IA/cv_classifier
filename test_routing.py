@@ -164,6 +164,47 @@ def main():
     nope.write_bytes(b"x")
     check("non-PDF costs none", spent(lambda: r9.handle(nope)) == 0)
 
+    # The daemon used to keep decisions in memory only, so every restart
+    # re-classified everything still sitting in the watch folder.
+    print("\n10. a decision survives a restart")
+    calls = {"n": 0}
+
+    def _count2(*a, **k):
+        calls["n"] += 1
+        return {"is_cv": False, "reason": "guidance note", "confidence": 0.99}
+
+    cr.ask_json = _count2
+    keep = testkit.make_pdf(watch / "guidance.pdf",
+                            ["Some Agency", "Guidance note"] + testkit.SAMPLE_TEXT[3:])
+    W.Router(cfg).sweep()
+    first = calls["n"]
+    W.Router(cfg).sweep()          # a fresh Router is a restarted daemon
+    W.Router(cfg).sweep()
+    check("classified once across three starts", first == 1 and calls["n"] == 1)
+    check("file still in Downloads", keep.exists())
+
+    print("\n11. a dry run leaves no trace that would skip the file later")
+    calls["n"] = 0
+    cfg2, tmp2 = testkit.temp_config()
+    cfg2.branches, cfg2.roles, cfg2.lang_split = cfg.branches, cfg.roles, {}
+    dry_pdf = testkit.make_pdf(cfg2.watch_dir / "dry.pdf",
+                               ["Ada LOVELACE", "Dry Run"] + testkit.SAMPLE_TEXT[3:])
+    cr.ask_json = lambda *a, **k: dict(FAKE, qualifier="Dry")
+    W.Router(cfg2, dry_run=True).handle(dry_pdf)
+    check("dry run moved nothing", dry_pdf.exists())
+    check("dry run wrote no verdict", not cfg2.seen_file.exists())
+    W.Router(cfg2).handle(dry_pdf)          # the real run must still act
+    check("the real run still files it", not dry_pdf.exists())
+    shutil.rmtree(tmp2)
+
+    print("\n12. extracted text is cached and reused")
+    cached = testkit.make_pdf(tmp / "cache-me.pdf")
+    t1 = cr.pdf_text_cached(cfg, cached)
+    entries = list(cfg.text_cache_dir.glob("*.txt"))
+    t2 = cr.pdf_text_cached(cfg, cached)
+    check("a cache entry was written", len(entries) >= 1)
+    check("cached text matches", t1 == t2 and len(t1) > 120)
+
     shutil.rmtree(tmp)
     print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
     return 0 if ok else 1

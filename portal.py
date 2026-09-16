@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -70,8 +71,21 @@ candidate can copy. Never invent experience the CVs do not support — rephrase,
 surface, and reorder what is already there. Write them in the CV's own language."""
 
 
+_index_cache: dict = {"mtime": None, "idx": None}
+_index_lock = threading.Lock()
+
+
 def _index() -> cr.Index:
-    return cr.Index(cfg)
+    """The index, re-read only when the file on disk actually changed."""
+    try:
+        mtime = cfg.index_file.stat().st_mtime_ns
+    except OSError:
+        return cr.Index(cfg)
+    with _index_lock:
+        if _index_cache["mtime"] != mtime or _index_cache["idx"] is None:
+            _index_cache["idx"] = cr.Index(cfg)
+            _index_cache["mtime"] = mtime
+        return _index_cache["idx"]
 
 
 def analyse(job_text: str) -> dict:
@@ -92,7 +106,7 @@ def analyse(job_text: str) -> dict:
 
     blocks = []
     for rel in picks:
-        text = cr.pdf_text(cfg.cv_root / rel)
+        text = cr.pdf_text_cached(cfg, cfg.cv_root / rel)
         blocks.append(f"=== CV [{rel}] ===\n{text[:9000]}")
 
     result = cr.ask_json(
@@ -147,7 +161,7 @@ def api_cvs():
 
 if __name__ == "__main__":
     import uvicorn
-    if not cfg.api_key:
-        print(f"WARNING: no API key. Set $ANTHROPIC_API_KEY or fill {cfg.key_file}",
-              file=sys.stderr)
+    if cfg.backend == "api" and not cfg.api_key:
+        print(f"WARNING: backend is \"api\" but no key. Set $ANTHROPIC_API_KEY "
+              f"or fill {cfg.key_file}", file=sys.stderr)
     uvicorn.run(app, host=cfg.host, port=cfg.port)

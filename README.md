@@ -117,9 +117,16 @@ first, so a call is only made for a PDF that is genuinely new:
 | a partial download (`.crdownload`, `.part`) | 0 |
 | anything that isn't a PDF | 0 |
 | a file you left in the folder, on later events | 0 — fingerprinted |
+| a file you left in the folder, after a restart | 0 — verdicts persist |
 
 So an idle watcher costs nothing, and re-exporting the same CV five times from a
 CV builder costs one call, not five.
+
+Verdicts are kept in `data/seen.json`, keyed on path + size + mtime and expiring
+after `seen_ttl_days`. Without it, restarting the daemon re-classified everything
+still sitting in the watch folder — a fresh call each time to reach last time's
+conclusion. A dry run deliberately writes nothing there, so it can never make a
+later real run skip a file.
 
 Filenames come out as:
 
@@ -143,7 +150,8 @@ Career stage is weighed first: a permanent role gets a graduate CV, an internshi
 gets the student one.
 
 Matching runs in two passes so it stays cheap — a one-line-per-CV index picks a
-shortlist of five, then only those five are read in full.
+shortlist of five, then only those five are read in full. Their extracted text
+comes from the cache, and the index is re-read only when it actually changed.
 
 `POST /api/match` with `{"job": "..."}` returns the same analysis as JSON.
 
@@ -154,6 +162,7 @@ shortlist of five, then only those five are read in full.
 | `python indexer.py` | index new or changed CVs (incremental) |
 | `python indexer.py --rebuild` | re-read the whole collection |
 | `python indexer.py --limit 25 --sleep 2` | pace it, to stay under a plan limit |
+| `python indexer.py --workers 1` | serial, if parallel calls trip a usage limit |
 | `python indexer.py --no-ai` | index from folder names only, no model calls |
 | `python watcher.py --once` | sweep the watch folder now, then exit |
 | `python watcher.py --dry-run` | decide and log, move nothing |
@@ -255,7 +264,8 @@ If that is not acceptable for your documents, do not use this.
 - **Scanned PDFs are skipped.** Extraction is `pdftotext`; an image-only PDF
   yields nothing and stays in Downloads. Add OCR if you need it.
 - **The CLI backend is slow** — 10–40s per call — and it consumes your Claude
-  plan's usage allowance. Indexing 90 CVs is 90 calls.
+  plan's usage allowance. Indexing 90 CVs is 90 calls, run `ai.index_workers` at
+  a time (default 4). Drop to `--workers 1` if that trips a limit.
 - The watcher watches the top level of the download folder, not subfolders.
 - The portal UI and the notification text are in French. Everything else — code,
   comments, config, prompts — is English.

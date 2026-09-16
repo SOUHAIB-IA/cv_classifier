@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 import unicodedata
@@ -98,6 +99,10 @@ class Config:
     port: int
     notify: dict
     headline_noise: str
+    seen_file: Path
+    seen_ttl_days: float
+    text_cache_dir: Path | None
+    index_workers: int
 
     @property
     def api_key(self) -> str | None:
@@ -153,6 +158,11 @@ def load_config(path: Path | None = None) -> Config:
         port=int(po["port"]),
         notify=raw.get("notify", {"enabled": False}),
         headline_noise=b.get("headline_noise", ""),
+        seen_file=_abs(p.get("seen_file", "data/seen.json")),
+        seen_ttl_days=float(b.get("seen_ttl_days", 30)),
+        text_cache_dir=(_abs(p["text_cache_dir"])
+                        if p.get("text_cache_dir") else None),
+        index_workers=int(a.get("index_workers", 4)),
     )
 
 
@@ -210,6 +220,58 @@ def pdf_text(path: Path, layout: bool = True) -> str:
         return r.stdout or ""
     except Exception:
         return ""
+
+
+def _cache_key(path: Path) -> str:
+    """Identity of a file's bytes, cheap to compute: path + size + mtime."""
+    st = path.stat()
+    return hashlib.md5(
+        f"{path.resolve()}|{st.st_size}|{st.st_mtime_ns}".encode()
+    ).hexdigest()
+
+
+def pdf_text_cached(cfg: Config, path: Path) -> str:
+    """pdf_text() with an on-disk cache.
+
+    Extraction spawns a pdftotext process and is pure overhead when the same
+    PDF is read again — the portal re-reads its five shortlisted CVs on every
+    request, and the indexer re-reads the whole collection on every run. Keyed
+    on size+mtime, so editing a PDF invalidates its entry by construction.
+    """
+    if not cfg.text_cache_dir:
+        return pdf_text(path)
+    try:
+        cache = cfg.text_cache_dir / f"{_cache_key(path)}.txt"
+        if cache.is_file():
+            os.utime(cache, None)          # mark as used, for TTL pruning
+            return cache.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return pdf_text(path)
+
+    text = pdf_text(path)
+    try:
+        cfg.text_cache_dir.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(cache)
+    except OSError:
+        pass                               # a cache we cannot write is not fatal
+    return text
+
+
+def prune_text_cache(cfg: Config, max_age_days: float = 30.0) -> int:
+    """Drop cache entries untouched for a while. Returns how many went."""
+    if not cfg.text_cache_dir or not cfg.text_cache_dir.is_dir():
+        return 0
+    cutoff, gone = time.time() - max_age_days * 86400, 0
+    for f in cfg.text_cache_dir.glob("*.txt"):
+        try:
+            if f.stat().st_atime < cutoff:
+                f.unlink()
+                gone += 1
+        except OSError:
+            pass
+    return gone
 
 
 def content_sig(text: str) -> str:
@@ -282,6 +344,63 @@ class CVRecord:
             f"[{self.path}] stage={self.branch} | role={self.role} | "
             f"lang={self.lang} | title={self.headline} | skills={sk} | {self.summary}"
         )
+
+
+class SeenStore:
+    """Fingerprints of files already decided on, persisted across restarts.
+
+    Without this the startup sweep re-classifies everything still sitting in the
+    watch folder every time the daemon restarts — one model call each, to reach
+    the same conclusion as last time. Entries for files that were filed never
+    match again (the path is gone), so in practice this holds the PDFs you chose
+    to leave where they were.
+    """
+
+    def __init__(self, cfg: Config):
+        self.path = cfg.seen_file
+        self.ttl = cfg.seen_ttl_days * 86400
+        self._lock = threading.Lock()
+        self._entries: dict[str, dict] = {}
+        self.load()
+
+    def load(self) -> None:
+        if not self.path.is_file():
+            return
+        try:
+            raw = json.loads(self.path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return
+        cutoff = time.time() - self.ttl
+        self._entries = {k: v for k, v in raw.get("seen", {}).items()
+                         if isinstance(v, dict) and v.get("ts", 0) > cutoff}
+
+    def _save(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(f".{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"seen": self._entries}, indent=1))
+            tmp.replace(self.path)
+        except OSError:
+            pass                       # losing the cache costs a call, not data
+
+    def verdict(self, fp: str) -> str | None:
+        with self._lock:
+            e = self._entries.get(fp)
+            return e.get("verdict") if e else None
+
+    def remember(self, fp: str, verdict: str) -> None:
+        with self._lock:
+            self._entries[fp] = {"ts": time.time(), "verdict": verdict}
+            if len(self._entries) > 5000:
+                for k in sorted(self._entries,
+                                key=lambda k: self._entries[k]["ts"])[:2500]:
+                    del self._entries[k]
+            self._save()
+
+    def forget(self, fp: str) -> None:
+        with self._lock:
+            if self._entries.pop(fp, None) is not None:
+                self._save()
 
 
 class IndexLockTimeout(RuntimeError):

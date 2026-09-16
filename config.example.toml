@@ -3,6 +3,12 @@ cv_root    = "~/Documents/CVs"            # where your sorted CVs live
 watch_dir  = "~/Downloads"                # folder to watch
 index_file = "data/index.json"
 log_file   = "data/cv-router.log"
+# Decisions already made, so restarting the daemon does not re-classify the
+# files you chose to leave in watch_dir.
+seen_file  = "data/seen.json"
+# Extracted PDF text, so re-reading a CV costs no pdftotext process.
+# Set to "" to disable.
+text_cache_dir = "data/textcache"
 # PDFs that are not CVs, or not yours, are left untouched in watch_dir.
 # Content-duplicates of an already-filed CV go here instead of the collection.
 dupe_dir   = "~/Documents/CVs/_Duplicates-auto"
@@ -16,6 +22,7 @@ backend    = "claude_cli"
 cli_model  = "sonnet"   # sonnet | haiku | opus
 claude_bin = ""         # "" = auto-detect the newest install
 timeout    = 240        # seconds per call
+index_workers = 4       # parallel model calls during indexing
 
 # --- api backend ---
 model      = "claude-sonnet-5"
@@ -31,6 +38,9 @@ file_prefix    = ""
 # Extra regex alternation for contact-detail lines to ignore when looking for
 # the job title near the top of a CV — typically the cities you put on your CV.
 headline_noise = "casablanca|rabat|maroc|morocco"
+
+# Forget a remembered decision after this many days.
+seen_ttl_days  = 30
 
 # Below this confidence the file is left in watch_dir and only logged.
 min_confidence = 0.6
