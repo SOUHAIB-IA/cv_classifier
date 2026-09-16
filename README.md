@@ -88,6 +88,40 @@ you are applying for an internship or a permanent job. Describe each branch in
 terms of the **words a CV uses**, not dates: a graduate CV still lists the years
 of its degree, and a model told to look at dates will misread that.
 
+## Two knobs that measured worse than expected
+
+Both exist, both are off by default, because on this collection the measurement
+went against the intuition. Re-measure on yours before turning either on.
+
+**A cheaper model for indexing** (`ai.index_model`). Summarising is an easier job
+than classifying, so haiku ought to do. Measured over four CVs, one call each:
+
+| | Latency | Student/graduate status kept |
+|---|---|---|
+| haiku | 12–19s | 3 of 4 |
+| sonnet | 5–6s | 4 of 4 |
+
+Haiku was slower *and* less reliable, so the default stays on `cli_model`.
+
+**Several CVs per call** (`ai.index_batch_size`). Batching cuts the call count by
+its factor, and on eight near-identical CVs one batched call took 46s against
+143s for eight individual ones. But against those individual summaries as the
+reference:
+
+| | Skills overlap | Status kept |
+|---|---|---|
+| batch of 8, haiku | 69% | 6 of 8 |
+| batch of 4, haiku | 71% | 6 of 8 |
+| batch of 4, sonnet | 75% | 7 of 8 |
+
+Summaries bleed between near-identical CVs, and two lost the student framing
+entirely — one became "Deloitte HR transformation specialist". Since the index
+exists to feed the portal's shortlist, and the shortlist weighs career stage
+first, that trade is a bad one. Default is 1, i.e. off.
+
+With four workers, indexing 90 CVs runs in a few minutes anyway, which is what
+made batching unnecessary rather than merely unwise.
+
 ## How filing decides
 
 A file is moved only when **all** of these hold:
@@ -163,6 +197,7 @@ comes from the cache, and the index is re-read only when it actually changed.
 | `python indexer.py --rebuild` | re-read the whole collection |
 | `python indexer.py --limit 25 --sleep 2` | pace it, to stay under a plan limit |
 | `python indexer.py --workers 1` | serial, if parallel calls trip a usage limit |
+| `python indexer.py --batch 8` | several CVs per call — cheaper, less accurate |
 | `python indexer.py --no-ai` | index from folder names only, no model calls |
 | `python watcher.py --once` | sweep the watch folder now, then exit |
 | `python watcher.py --dry-run` | decide and log, move nothing |

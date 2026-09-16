@@ -23,6 +23,15 @@ cli_model  = "sonnet"   # sonnet | haiku | opus
 claude_bin = ""         # "" = auto-detect the newest install
 timeout    = 240        # seconds per call
 index_workers = 4       # parallel model calls during indexing
+# Model for indexing summaries. "" = same as cli_model.
+# Measured on this collection: haiku was both SLOWER (12-19s vs 5-6s per call)
+# and less reliable (kept the student/graduate status on 3 of 4 CVs, vs 4 of 4),
+# so the cheaper model is not the better default here. Re-measure before changing.
+index_model = ""
+# CVs per indexing call. Batching cuts calls by this factor but costs accuracy on
+# near-identical CVs: batches of 8 kept 69% of the skills an individual call
+# found and lost the student/graduate status on 2 of 8. 1 disables it.
+index_batch_size = 1
 
 # --- api backend ---
 model      = "claude-sonnet-5"

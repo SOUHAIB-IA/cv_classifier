@@ -103,6 +103,8 @@ class Config:
     seen_ttl_days: float
     text_cache_dir: Path | None
     index_workers: int
+    index_model: str
+    index_batch_size: int
 
     @property
     def api_key(self) -> str | None:
@@ -163,6 +165,10 @@ def load_config(path: Path | None = None) -> Config:
         text_cache_dir=(_abs(p["text_cache_dir"])
                         if p.get("text_cache_dir") else None),
         index_workers=int(a.get("index_workers", 4)),
+        # Summarising a CV is a far simpler job than deciding its branch and
+        # specialty, so indexing can run on a cheaper model than filing.
+        index_model=a.get("index_model", "") or a.get("cli_model", "sonnet"),
+        index_batch_size=int(a.get("index_batch_size", 8)),
     )
 
 
@@ -547,7 +553,8 @@ def find_claude_bin() -> Path | None:
     return sorted(cands, key=_vkey)[-1] if cands else None
 
 
-def _ask_cli(cfg: Config, system: str, user: str, timeout: int | None = None) -> str:
+def _ask_cli(cfg: Config, system: str, user: str, timeout: int | None = None,
+             model: str | None = None) -> str:
     binp = Path(cfg.claude_bin) if cfg.claude_bin else find_claude_bin()
     if not binp or not binp.is_file():
         raise AIError(
@@ -560,7 +567,7 @@ def _ask_cli(cfg: Config, system: str, user: str, timeout: int | None = None) ->
     # --restricted disables every built-in tool, so untrusted CV text read from
     # a PDF cannot cause any action — this is a pure text-in/text-out call.
     cmd = [str(binp), "-p", "--restricted", "--strict-mcp-config",
-           "--model", cfg.cli_model]
+           "--model", model or cfg.cli_model]
     try:
         r = subprocess.run(
             cmd, input=prompt, capture_output=True, text=True, env=env,
@@ -578,7 +585,8 @@ def _ask_cli(cfg: Config, system: str, user: str, timeout: int | None = None) ->
 
 
 # -- backend B: the Anthropic API (needs a paid API key, separate from Pro) --
-def _ask_api(cfg: Config, system: str, user: str, max_tokens: int | None) -> str:
+def _ask_api(cfg: Config, system: str, user: str, max_tokens: int | None,
+             model: str | None = None) -> str:
     key = cfg.api_key
     if not key:
         raise AIError("No Anthropic API key. Set $ANTHROPIC_API_KEY or write it "
@@ -588,7 +596,7 @@ def _ask_api(cfg: Config, system: str, user: str, max_tokens: int | None) -> str
     except ImportError as e:  # pragma: no cover
         raise AIError("anthropic package missing — pip install anthropic") from e
     msg = anthropic.Anthropic(api_key=key).messages.create(
-        model=cfg.model,
+        model=model or cfg.model,
         max_tokens=max_tokens or cfg.max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
@@ -596,12 +604,17 @@ def _ask_api(cfg: Config, system: str, user: str, max_tokens: int | None) -> str
     return "".join(b.text for b in msg.content if b.type == "text")
 
 
-def ask_json(cfg: Config, system: str, user: str, max_tokens: int | None = None) -> dict:
-    """One-shot call that must come back as a JSON object."""
+def ask_json(cfg: Config, system: str, user: str, max_tokens: int | None = None,
+             model: str | None = None) -> dict:
+    """One-shot call that must come back as a JSON object.
+
+    `model` overrides the configured one — indexing uses a cheaper model than
+    filing, because summarising is easier than classifying.
+    """
     if cfg.backend == "claude_cli":
-        body = _ask_cli(cfg, system, user)
+        body = _ask_cli(cfg, system, user, model=model)
     else:
-        body = _ask_api(cfg, system, user, max_tokens)
+        body = _ask_api(cfg, system, user, max_tokens, model=model)
     m = re.search(r"\{.*\}", body.strip(), re.S)
     if not m:
         raise AIError(f"model did not return JSON: {body.strip()[:300]}")
