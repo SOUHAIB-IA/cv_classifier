@@ -6,3 +6,13 @@ data/
 .venv/
 __pycache__/
 *.pyc
+
+# graphify (regenerable, large)
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/graph.json
+
+# pipeline: your data
+pipeline.toml
+profile.toml
+applications/

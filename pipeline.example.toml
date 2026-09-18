@@ -1,0 +1,100 @@
+# Job application pipeline — copy to pipeline.toml and adjust.
+
+[pipeline]
+db               = "data/pipeline.db"
+lock_file        = "data/pipeline.lock"
+applications_dir = "applications"          # tailored CVs land here, NOT in your CV library
+tracker_xlsx     = "data/job_tracker.xlsx"  # exported view of the tracker
+structured_dir   = "data/structured"        # cached structured versions of your base CVs
+
+[budget]
+# Each model evaluation is two calls through cv-router. A Claude plan cannot
+# absorb 100 of those a day, so evaluation is capped here; every sourced job
+# still gets the free pre-screen, and the best-screened are evaluated first.
+daily_match_budget  = 20
+max_matches_per_run = 5
+
+[thresholds]
+auto   = 70   # >= : tailor the CV and stage the application
+review = 40   # >= : your review queue.  below: skip
+# Calibrate these against 10-15 jobs you have judged yourself before trusting
+# the auto path:  python -m pipeline.calibrate
+
+[prefilter]
+min_score = 0.30          # pre-screen score, 0-1, needed to earn an evaluation
+# Whole words, case- and accent-insensitive. A trailing * makes a prefix:
+# "data scien*" matches "data science" and "data scientist".
+title_include = ["ai", "ia", "ml", "machine learning", "mlops", "data scien*",
+                 "data engineer*", "llm*", "nlp", "genai", "generative",
+                 "deep learning", "computer vision", "applied scientist",
+                 "intelligence artificielle", "software engineer*", "backend",
+                 "back-end", "python", "full stack", "fullstack", "full-stack",
+                 "research engineer", "forward deployed", "ingenieur*", "developpeur*"]
+title_exclude = ["senior", "sr", "staff", "principal", "director", "head",
+                 "vp", "vice president", "manager", "lead", "chief", "sales",
+                 "account executive", "recruiter", "legal", "counsel", "intern",
+                 "internship", "stagiaire", "stage", "alternance", "alternant*",
+                 "apprenti*", "marketing"]
+# Places, in order of preference: when one role is posted for several
+# locations, the posting in the earliest-listed place is the one kept.
+# A multi-location posting passes if any one of its places does. Work modes
+# (remote, hybrid) are not places — a plain "Remote" always passes, while
+# "Remote - US" is judged on "US".
+location_include = ["morocco", "maroc", "casablanca", "rabat", "france", "paris",
+                    "lyon", "emea", "europe", "anywhere", "worldwide", "global"]
+location_exclude = ["united states", "usa", "us only", "u.s", "canada",
+                    "san francisco", "new york", "seattle", "austin", "boston",
+                    "toronto", "singapore", "tokyo", "sydney", "india", "bangalore",
+                    "us"]
+languages     = ["fr", "en"]
+max_age_days  = 45
+# Drop ads asking for more years than this. The model caps those at <= 35
+# anyway, so evaluating them only spends budget. 0 disables.
+max_years_required = 2
+# Countries you can already work in. An ad that requires the right to work
+# elsewhere, offers no sponsorship or relocation, is dropped.
+# Remove the line to disable the check.
+work_authorization = ["morocco", "maroc"]
+
+[sourcing]
+request_delay_seconds      = 2.0   # between boards: spread load, look like a person
+board_min_interval_minutes = 180   # re-fetch a board at most this often
+boards_per_run             = 10    # a run takes the boards that waited longest
+timeout_seconds            = 20
+
+# Company boards. "slug" or "slug=Display Name". Find a company's slug and ATS
+# with:  python -m pipeline.fetch --probe <slug>
+[sources.greenhouse]
+boards = ["dataiku=Dataiku", "datadog=Datadog", "algolia=Algolia", "mirakl=Mirakl",
+          "wise=Wise", "scaleai=Scale AI", "anthropic=Anthropic",
+          "snorkelai=Snorkel AI", "databricks=Databricks", "vercel=Vercel",
+          "gitlab=GitLab"]
+
+[sources.lever]
+boards = ["contentsquare=Contentsquare", "pigment=Pigment", "blablacar=BlaBlaCar",
+          "aircall=Aircall", "malt=Malt", "swile=Swile"]
+
+[sources.ashby]
+boards = ["doctolib=Doctolib", "alan=Alan", "qonto=Qonto", "backmarket=Back Market",
+          "photoroom=Photoroom", "poolside=Poolside", "hcompany=H Company",
+          "ledger=Ledger", "owkin=Owkin", "nabla=Nabla", "dust=Dust",
+          "gladia=Gladia", "sorare=Sorare", "ankorstore=Ankorstore",
+          "cohere=Cohere", "elevenlabs=ElevenLabs", "deepl=DeepL",
+          "synthesia=Synthesia", "n8n=n8n", "perplexity=Perplexity",
+          "openai=OpenAI", "langchain=LangChain", "weaviate=Weaviate",
+          "pinecone=Pinecone", "modal=Modal", "supabase=Supabase", "posthog=PostHog"]
+
+[tailor]
+enabled   = true
+# Page target. The renderer tightens spacing step by step to fit it, down to a
+# readable floor; a CV that still overflows is flagged, never shrunk further.
+max_pages = 1
+chrome_bin = ""   # "" = auto-detect google-chrome / chromium
+# Tailored CVs are one-offs; keeping them out of the CV library stops it
+# filling with per-job copies. Set true to have them indexed like any CV.
+register_in_cv_library = false
+
+[submit]
+browser_channel = "chrome"   # use the installed Chrome, no browser download
+allowed_hosts = ["boards.greenhouse.io", "job-boards.greenhouse.io",
+                 "jobs.lever.co", "jobs.ashbyhq.com"]

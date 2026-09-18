@@ -21,6 +21,20 @@ fooled by a filename or a stale job title at the top of the page.
         Ada-LOVELACE_AI-ML-Engineer_RAG-MLOps_EN.pdf
 ```
 
+## Job application pipeline
+
+cv-router is also the engine of a fuller pipeline: it sources postings from
+public job boards, pre-screens them for free, has cv-router pick and score the
+CV, tailors it, stages the application for you to submit, and tracks the
+outcome. See **[PIPELINE.md](PIPELINE.md)**.
+
+The matching is callable headlessly too:
+
+```bash
+python match.py --file job.txt --compact
+curl -X POST localhost:8770/api/v1/match -H 'Content-Type: application/json' -d '{"jd": "..."}'
+```
+
 ## Why an LLM and not keywords
 
 Real filenames from the collection this was built for:
@@ -204,6 +218,7 @@ comes from the cache, and the index is re-read only when it actually changed.
 | `python portal.py` | run the portal in the foreground |
 | `python test_routing.py` | filing logic, model stubbed |
 | `python test_index_concurrency.py` | concurrent index writers lose nothing |
+| `python test_pipeline.py` | the job pipeline — see PIPELINE.md |
 
 Start with `--dry-run`: it prints every decision and its reasoning without
 touching a file.

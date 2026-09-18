@@ -1,0 +1,513 @@
+#!/usr/bin/env python3
+"""CV Auto-Tailoring Engine — apply cv-router's edits to the chosen base CV.
+
+  python -m pipeline.tailor <job_id>        tailor one job's CV
+  python -m pipeline.tailor --pending       tailor every job waiting for it
+
+The base CVs are PDFs from a CV builder; there is no editable source behind
+them. So each base CV is first extracted into a structured document, once, with
+its text copied verbatim — and that extraction is checked against the PDF
+before anything is built on it. Tailoring then only swaps text the edit list
+quotes exactly: it never rewrites freely, so it cannot invent experience and
+the layout stays under control. The result is rendered to PDF by headless
+Chrome and read back with pdftotext, the way an ATS would, before it is used.
+
+Output:  applications/<date>/<Owner>_<Variant>_<Lang>_<Company>_<Date>.pdf
+         plus a .json beside it listing every edit applied or refused, and why.
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unicodedata
+from datetime import date
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+import cvrouter as cr
+
+from . import config as pc
+from .db import DB
+from .orchestrate import _variant_label
+
+ROOT = Path(__file__).resolve().parent.parent
+
+EXTRACT_SYSTEM = """You convert one CV into a structured JSON document.
+
+The text will be edited mechanically by searching for exact quotes, so COPY
+EVERY PIECE OF TEXT VERBATIM. Do not paraphrase, shorten, translate, correct,
+reorder or merge anything. Do not add anything that is not in the CV. Keep the
+CV's own language and its own section titles.
+
+Return ONLY this JSON:
+{
+ "name": "full name",
+ "headline": "the tagline under the name, or \\"\\"",
+ "contact": {"email": "", "phone": "", "location": "",
+             "links": [{"label": "LinkedIn", "url": "https://..."}]},
+ "summary": "the profile / summary paragraph, verbatim, or \\"\\"",
+ "sections": [
+   {"title": "section title as written", "kind": "experience|projects|education|other",
+    "items": [{"heading": "role or project or degree", "org": "company / school / stack",
+               "dates": "as written", "location": "as written",
+               "bullets": ["each bullet verbatim"]}]},
+   {"title": "...", "kind": "skills",
+    "groups": [{"label": "group label as written, or \\"\\"", "items": ["skill", "..."]}]},
+   {"title": "...", "kind": "list", "lines": ["each line verbatim"]}
+ ]
+}
+
+Every line of the CV must land somewhere. The profile paragraph goes in
+"summary", not in a section. Use "list" for languages, certifications,
+interests, awards. Sections stay in the CV's order."""
+
+_ABSENT = {"", "(absent)", "absent", "(aucun)", "aucun", "n/a", "(none)", "none", "-"}
+
+
+# --------------------------------------------------------------- text helpers --
+def _norm(s: str) -> str:
+    s = unicodedata.normalize("NFKC", s or "")
+    s = s.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    s = s.replace("–", "-").replace("—", "-").replace("•", " ")
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def _words(s: str) -> list[str]:
+    return re.findall(r"[a-z0-9àâçéèêëîïôûùüÿñæœ+#]{2,}", _norm(s))
+
+
+def doc_text(doc: dict) -> str:
+    """Every piece of text the structured document holds."""
+    out = [doc.get("name", ""), doc.get("headline", ""), doc.get("summary", "")]
+    c = doc.get("contact") or {}
+    out += [c.get("email", ""), c.get("phone", ""), c.get("location", "")]
+    out += [f"{l.get('label', '')} {l.get('url', '')}" for l in c.get("links") or []]
+    for sec in doc.get("sections") or []:
+        out.append(sec.get("title", ""))
+        for it in sec.get("items") or []:
+            out += [it.get("heading", ""), it.get("org", ""), it.get("dates", ""),
+                    it.get("location", "")] + list(it.get("bullets") or [])
+        for g in sec.get("groups") or []:
+            out += [g.get("label", "")] + list(g.get("items") or [])
+        out += list(sec.get("lines") or [])
+    return "\n".join(x for x in out if x)
+
+
+def coverage(pdf_text: str, doc: dict) -> float:
+    """Share of the PDF's words found in the structured document. A low value
+    means the extraction dropped content, and nothing should be built on it."""
+    src = _words(pdf_text)
+    if not src:
+        return 0.0
+    have = set(_words(doc_text(doc)))
+    return sum(1 for w in src if w in have) / len(src)
+
+
+# ------------------------------------------------------------ 1. structure --
+def structured(cfg: cr.Config, pcfg: pc.PipelineConfig, base_rel: str,
+               ask=None) -> dict:
+    """The structured version of a base CV — cached by content signature, so
+    each variant costs one model call ever, and an edited PDF re-extracts."""
+    ask = ask or cr.ask_json
+    pdf = cfg.cv_root / base_rel
+    text = cr.pdf_text_cached(cfg, pdf)
+    sig = cr.content_sig(text)
+    cache = pcfg.structured_dir / f"{sig}.json"
+    if cache.is_file():
+        return json.loads(cache.read_text())
+
+    doc = ask(cfg, EXTRACT_SYSTEM, f"--- CV TEXT ---\n{text[:16000]}", max_tokens=8000)
+    doc.setdefault("contact", {})
+    doc.setdefault("sections", [])
+    cov = coverage(text, doc)
+    doc["_source"] = {"path": base_rel, "sig": sig, "coverage": round(cov, 3)}
+    if cov < 0.85:
+        raise TailorError(f"extraction kept only {cov:.0%} of the CV's words "
+                          f"— refusing to build on it")
+    pcfg.structured_dir.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+    return doc
+
+
+class TailorError(RuntimeError):
+    pass
+
+
+# -------------------------------------------------------------- 2. edit ------
+def _fields(doc: dict):
+    """Every editable text field as (label, kind, getter, setter).
+
+    kind is one of headline | summary | bullet | skills | line, carried
+    explicitly rather than guessed from the label.
+
+    Name, contact, dates, employers and schools are deliberately absent: an
+    edit list may reword how you describe your work, never who or where.
+    """
+    yield ("headline", "headline", lambda: doc.get("headline", "") or "",
+           lambda v: doc.__setitem__("headline", v))
+    yield ("summary", "summary", lambda: doc.get("summary", "") or "",
+           lambda v: doc.__setitem__("summary", v))
+    for sec in doc.get("sections") or []:
+        title = sec.get("title", "")
+        for it in sec.get("items") or []:
+            bl = it.setdefault("bullets", [])
+            for bi in range(len(bl)):
+                yield (f"{title} / {it.get('heading', '')} / bullet {bi + 1}", "bullet",
+                       (lambda bl=bl, bi=bi: bl[bi]),
+                       (lambda v, bl=bl, bi=bi: bl.__setitem__(bi, v)))
+        for g in sec.get("groups") or []:
+            g.setdefault("items", [])
+            yield (f"{title} / {g.get('label', '') or 'skills'}", "skills",
+                   (lambda g=g: ", ".join(g.get("items") or [])),
+                   (lambda v, g=g: g.__setitem__("items", _split_items(v))))
+        lines = sec.get("lines") or []
+        for li in range(len(lines)):
+            yield (f"{title} / line {li + 1}", "line",
+                   (lambda lines=lines, li=li: lines[li]),
+                   (lambda v, lines=lines, li=li: lines.__setitem__(li, v)))
+
+
+def _in_protected(doc: dict, quote: str) -> bool:
+    """Does the quote point at a field tailoring must never touch?"""
+    q = [w for w in _words(quote) if len(w) > 2 or w.isdigit()]
+    if not q:
+        return False
+    c = doc.get("contact") or {}
+    protected = [doc.get("name", ""), c.get("email", ""), c.get("phone", ""),
+                 c.get("location", "")]
+    for sec in doc.get("sections") or []:
+        for it in sec.get("items") or []:
+            # a quote can straddle them ("Acme 2025", "06/2026 | Taroudant"),
+            # so also test the entry's protected parts taken together
+            parts = [it.get("org", ""), it.get("dates", ""), it.get("location", "")]
+            protected += parts + [" ".join(parts)]
+    for field in protected:
+        have = set(_words(field))
+        if have and sum(w in have for w in q) / len(q) >= 0.8:
+            return True
+    return False
+
+
+def _split_items(s: str) -> list[str]:
+    parts = re.split(r"\s*[|,;•·]\s*", s)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _strip_label(s: str) -> str:
+    """'Cloud & DevOps: FastAPI | Docker' -> 'FastAPI | Docker'."""
+    return re.sub(r"^[^:|]{2,40}:\s*", "", s).strip()
+
+
+def _skills_groups(doc: dict) -> list[dict]:
+    return [g for sec in doc.get("sections") or [] if sec.get("kind") == "skills"
+            for g in sec.get("groups") or []]
+
+
+def apply_edits(doc: dict, edits: list[dict]) -> tuple[dict, list[dict]]:
+    """Apply what can be anchored, refuse the rest. Returns (doc, report)."""
+    doc = json.loads(json.dumps(doc))          # never mutate the cached base
+    report = []
+    for e in edits:
+        cur = (e.get("current") or "").strip().strip('"«»“”').strip()
+        new = (e.get("suggested") or "").strip()
+        sec = _norm(e.get("section", ""))
+        entry = {"section": e.get("section", ""), "priority": e.get("priority", ""),
+                 "current": cur, "suggested": new, "why": e.get("why", "")}
+        if not new:
+            report.append({**entry, "status": "skipped", "reason": "no replacement text"})
+            continue
+
+        # -- nothing to replace: only safe as an addition to skills or headline
+        if _norm(cur) in _ABSENT:
+            if re.search(r"comp[eé]tence|skill|stack|outil|tool", sec):
+                groups = _skills_groups(doc)
+                if not groups:
+                    report.append({**entry, "status": "skipped",
+                                   "reason": "no skills section to add to"})
+                    continue
+                target = max(groups, key=lambda g: difflib.SequenceMatcher(
+                    None, _norm(g.get("label", "")), sec).ratio())
+                have = {_norm(x) for x in target["items"]}
+                added = [x for x in _split_items(_strip_label(new)) if _norm(x) not in have]
+                target["items"].extend(added)
+                report.append({**entry, "status": "applied" if added else "skipped",
+                               "where": f"skills / {target.get('label', '')}",
+                               "reason": f"added {', '.join(added)}" if added
+                               else "already listed"})
+            elif re.search(r"titre|title|headline|accroche", sec):
+                doc["headline"] = new
+                report.append({**entry, "status": "applied", "where": "headline",
+                               "reason": "headline was empty"})
+            else:
+                report.append({**entry, "status": "skipped",
+                               "reason": "nothing quoted to replace; not a skills or "
+                                         "headline addition, so not applied blind"})
+            continue
+
+        # -- guard: an edit may reword, not rewrite the document
+        if len(new) > 2.5 * len(cur) + 220:
+            report.append({**entry, "status": "skipped",
+                           "reason": "replacement much longer than the text it "
+                                     "replaces — looks like a rewrite, not an edit"})
+            continue
+
+        n_cur, n_cur_bare = _norm(cur), _norm(_strip_label(cur))
+        best = None                        # (score, label, kind, get, set, mode)
+        for label, kind, get, set_ in _fields(doc):
+            val = get()
+            if not val:
+                continue
+            nv = _norm(val)
+            if kind == "skills":
+                # compare as lists: "A | B" and "A, B" are the same group
+                nv = _norm(", ".join(_split_items(val)))
+                probe = _norm(", ".join(_split_items(_strip_label(cur))))
+                score = 1.0 if probe and probe in nv else \
+                    difflib.SequenceMatcher(None, probe, nv).ratio()
+                mode = "list"
+            elif n_cur and n_cur in nv:
+                score, mode = 1.0 + len(n_cur) / max(len(nv), 1), "substring"
+            elif n_cur_bare and n_cur_bare in nv:
+                score, mode = 0.99 + len(n_cur_bare) / max(len(nv), 1), "substring"
+            else:
+                score, mode = difflib.SequenceMatcher(
+                    None, n_cur_bare or n_cur, nv).ratio(), "fuzzy"
+            if best is None or score > best[0]:
+                best = (score, label, kind, get, set_, mode)
+
+        if not best or best[0] < 0.72:
+            if _in_protected(doc, cur):
+                reason = ("targets a protected field — dates, places, employers, "
+                          "schools and contact details are never edited")
+            else:
+                reason = "quoted text not found in the CV" + (
+                    f" (closest: {best[1]}, {best[0]:.0%})" if best else "")
+            report.append({**entry, "status": "skipped", "reason": reason})
+            continue
+
+        score, label, kind, get, set_, mode = best
+        if kind == "skills":
+            set_(_strip_label(new))            # the suggestion is the whole new list
+        elif mode == "substring":
+            # replace just the quoted span, keeping the rest of the field
+            val = get()
+            quoted = cur if _norm(cur) in _norm(val) else _strip_label(cur)
+            replacement = new if quoted == cur else _strip_label(new)
+            pat = re.compile(r"\s+".join(map(re.escape, quoted.split())), re.I)
+            out, n = pat.subn(lambda _m: replacement, val, count=1)
+            set_(out if n else replacement)
+        else:
+            set_(new)                          # fuzzy: the field was the quote
+        report.append({**entry, "status": "applied", "where": label,
+                       "reason": f"{mode} match ({min(score, 1):.0%})"})
+    return doc, report
+
+
+# ------------------------------------------------------------ 3. render ------
+LABELS = {"fr": {"summary": "Profil"}, "en": {"summary": "Profile"}}
+
+# Tried in order until the CV fits the target page count. The last step is the
+# readability floor: below it a recruiter squints, so a CV that still overflows
+# is left at two pages rather than shrunk further.
+DENSITY = [
+    {"fs": 9.6, "lh": 1.36, "margin": "13mm 14mm 12mm", "h2": "4mm", "item": "2.1mm",
+     "h1": 19, "hl": 11},
+    {"fs": 9.1, "lh": 1.28, "margin": "11mm 12mm 10mm", "h2": "3.2mm", "item": "1.6mm",
+     "h1": 17, "hl": 10.4},
+    {"fs": 8.7, "lh": 1.22, "margin": "9mm 11mm 8mm", "h2": "2.6mm", "item": "1.2mm",
+     "h1": 16, "hl": 10},
+    {"fs": 8.4, "lh": 1.18, "margin": "8mm 10mm 7mm", "h2": "2.2mm", "item": "1mm",
+     "h1": 15, "hl": 9.6},
+]
+
+# Section order by career stage. A graduate applying for a job leads with what
+# they did; a student leads with what they are studying.
+ORDER = {
+    "graduate": ["experience", "projects", "skills", "education", "other", "list"],
+    "student":  ["education", "experience", "projects", "skills", "other", "list"],
+}
+
+
+def reorder(doc: dict, stage: str) -> dict:
+    """Canonical section order; sections of one kind keep their relative order
+    (sort is stable), and list sections — certifications, languages — close."""
+    rank = {k: i for i, k in enumerate(ORDER.get(stage, ORDER["graduate"]))}
+    doc["sections"] = sorted(doc.get("sections") or [],
+                             key=lambda s: rank.get(s.get("kind", "other"), len(rank)))
+    return doc
+
+
+def render_html(doc: dict, lang: str, density: dict | None = None) -> str:
+    env = Environment(loader=FileSystemLoader(ROOT / "templates"),
+                      autoescape=select_autoescape(["html"]))
+    return env.get_template("cv.html").render(
+        doc=doc, lang=lang, labels=LABELS.get(lang, LABELS["en"]),
+        d=density or DENSITY[0])
+
+
+def page_count(pdf: Path) -> int:
+    out = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True).stdout
+    m = re.search(r"Pages:\s+(\d+)", out)
+    return int(m.group(1)) if m else 0
+
+
+def render_fitted(doc: dict, lang: str, out: Path, chrome: str,
+                  max_pages: int = 1) -> tuple[int, int]:
+    """Render at the loosest density that fits max_pages.
+    Returns (pages, density step used)."""
+    for step, d in enumerate(DENSITY):
+        html_to_pdf(render_html(doc, lang, d), out, chrome)
+        pages = page_count(out)
+        if pages <= max_pages:
+            return pages, step
+    return pages, len(DENSITY) - 1
+
+
+def find_chrome(pcfg: pc.PipelineConfig) -> str:
+    for c in ([pcfg.chrome_bin] if pcfg.chrome_bin else []) + [
+            "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
+        p = shutil.which(c) if c and not Path(c).is_file() else c
+        if p:
+            return p
+    raise TailorError("no Chrome/Chromium found to render the PDF")
+
+
+def html_to_pdf(html: str, out: Path, chrome: str) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "cv.html"
+        src.write_text(html, encoding="utf-8")
+        r = subprocess.run(
+            [chrome, "--headless=new", "--disable-gpu", "--no-sandbox",
+             "--no-pdf-header-footer", f"--user-data-dir={td}/profile",
+             f"--print-to-pdf={out}", src.as_uri()],
+            capture_output=True, text=True, timeout=90)
+    if not out.is_file() or out.stat().st_size < 1000:
+        raise TailorError(f"Chrome did not produce a PDF: {r.stderr[-300:]}")
+
+
+# ------------------------------------------------------------ 4. verify ------
+def verify(pdf: Path, doc: dict, report: list[dict], max_pages: int = 2) -> list[str]:
+    """Read the PDF back the way an ATS would. Returns problems, [] if none."""
+    text = cr.pdf_text(pdf, layout=False)
+    probs = []
+    nt = _norm(text)
+    if _norm(doc.get("name", ""))[:20] not in nt:
+        probs.append("name not readable in the PDF")
+    for r in report:
+        if r["status"] != "applied":
+            continue
+        probe = _norm(_strip_label(r["suggested"]))[:40]
+        if probe and probe not in nt and not all(w in nt for w in _words(probe)[:5]):
+            probs.append(f"applied edit not readable in the PDF: {r['suggested'][:60]}")
+    pages = page_count(pdf)
+    if pages > max_pages:
+        probs.append(f"{pages} pages, over the {max_pages}-page target even at "
+                     f"the densest readable setting")
+    return probs
+
+
+# ---------------------------------------------------------- 5. per job -------
+def _slug(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-")[:30] or "Company"
+
+
+def output_path(pcfg: pc.PipelineConfig, cfg: cr.Config, job, variant: str,
+                lang: str) -> Path:
+    d = date.today().isoformat()
+    owner = cfg.file_prefix.replace("-", "_")
+    name = f"{owner}_{_variant_label(variant)}_{lang.upper()}_{_slug(job['company'])}_{d}.pdf"
+    return pcfg.applications_dir / d / name
+
+
+def tailor_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str, *,
+               ask=None, log=print) -> Path:
+    job = db.one("SELECT * FROM jobs WHERE id=?", job_id)
+    m = db.one("SELECT * FROM matches WHERE job_id=?", job_id)
+    if not job or not m:
+        raise TailorError(f"{job_id}: no job or no match on file")
+    variant = m["recommended_variant"]
+    lang = (m["recommended_account"] or job["language"] or "en").lower()
+    edits = json.loads(m["suggested_edits"] or "[]")
+
+    base = structured(cfg, pcfg, variant, ask=ask)
+    doc, report = apply_edits(base, edits)
+    stage = "student" if variant.startswith("1-") else "graduate"
+    doc = reorder(doc, stage)
+    out = output_path(pcfg, cfg, job, variant, lang)
+    pages, step = render_fitted(doc, lang, out, find_chrome(pcfg),
+                                max_pages=pcfg.max_pages)
+    problems = verify(out, doc, report, max_pages=pcfg.max_pages)
+
+    sidecar = {
+        "job_id": job_id, "company": job["company"], "title": job["title"],
+        "apply_url": job["apply_url"], "base_cv": variant,
+        "fit_score": m["fit_score"], "ats_score": m["ats_score"],
+        "edits": report, "verification": problems or "ok",
+        "extraction_coverage": base.get("_source", {}).get("coverage"),
+        "pages": pages, "density_step": step, "section_order": stage,
+    }
+    out.with_suffix(".json").write_text(json.dumps(sidecar, ensure_ascii=False, indent=1))
+
+    applied = sum(r["status"] == "applied" for r in report)
+    with db.tx():
+        if problems:
+            db.upsert_application(job_id, status="pending", cv_filename=out.name,
+                                  notes=f"tailored CV failed verification: "
+                                        f"{'; '.join(problems)[:300]}")
+            db.event("tailor", job_id, ok=False, problems=problems)
+        else:
+            db.upsert_application(job_id, status="staged", cv_filename=out.name)
+            db.set_stage(job_id, "tailored")
+            db.event("tailor", job_id, ok=True, applied=applied,
+                     refused=len(report) - applied, file=str(out))
+
+    if pcfg.register_tailored and not problems:
+        shutil.copy2(out, cfg.watch_dir / out.name)
+    log(f"  {'staged' if not problems else 'CHECK '} {job['company'][:16]:16s} "
+        f"{applied}/{len(report)} edits applied -> {out.relative_to(ROOT)}"
+        + (f"\n     problems: {'; '.join(problems)}" if problems else ""))
+    if problems:
+        raise TailorError("; ".join(problems))
+    return out
+
+
+def pending_jobs(db: DB) -> list[str]:
+    """Approved or auto jobs whose CV has not been tailored yet."""
+    return [r["job_id"] for r in db.q(
+        "SELECT a.job_id FROM applications a JOIN matches m ON m.job_id=a.job_id "
+        "WHERE a.status='pending' AND (a.cv_filename IS NULL OR a.cv_filename='') "
+        "ORDER BY a.fit_score DESC")]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("job_id", nargs="?")
+    ap.add_argument("--pending", action="store_true")
+    args = ap.parse_args()
+    pcfg, cfg = pc.load(), cr.load_config()
+    db = DB(pcfg.db)
+    ids = pending_jobs(db) if args.pending else [args.job_id] if args.job_id else []
+    if not ids:
+        print("nothing to tailor")
+        return 0
+    rc = 0
+    for jid in ids:
+        try:
+            tailor_job(db, pcfg, cfg, jid)
+        except (TailorError, cr.AIError) as e:
+            print(f"  !! {jid}: {e}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())
