@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the cv-router job pipeline every 45 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=45min
+# Spread start times so requests to the job boards do not arrive on a
+# mechanical beat.
+RandomizedDelaySec=8min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

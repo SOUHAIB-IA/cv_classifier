@@ -12,14 +12,22 @@ PY="$P/.venv/bin/python"
 
 mkdir -p "$UNITS" "$HOME/.config/cv-router"
 
-for svc in watcher portal; do
+for unit in watcher.service portal.service pipeline.service pipeline.timer; do
   sed -e "s|@WORKDIR@|$P|g" -e "s|@PYTHON@|$PY|g" \
-      "$P/systemd/cv-router-$svc.service.in" > "$UNITS/cv-router-$svc.service"
+      "$P/systemd/cv-router-$unit.in" > "$UNITS/cv-router-$unit"
 done
 
 systemctl --user daemon-reload
-systemctl --user enable --now cv-router-watcher.service cv-router-portal.service
+systemctl --user enable cv-router-watcher.service cv-router-portal.service
+# restart, not just start: re-running this after pulling new code must load it
+systemctl --user restart cv-router-watcher.service cv-router-portal.service
 systemctl --user --no-pager status cv-router-watcher.service --lines=5 || true
+
+# The pipeline timer is installed but NOT started: run a dry run and a small
+# real batch first (see README), then enable it deliberately.
+echo
+echo "Pipeline timer installed, not started. After a dry run and a small batch:"
+echo "  systemctl --user enable --now cv-router-pipeline.timer"
 
 PORT="$(sed -n 's/^port *= *\([0-9]*\).*/\1/p' "$P/config.toml" | head -1)"
 echo

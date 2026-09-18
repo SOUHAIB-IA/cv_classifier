@@ -1,0 +1,20 @@
+# Your details for pre-filling application forms. Copy to profile.toml.
+# profile.toml is gitignored and never written to any log.
+
+[identity]
+first_name = "Ada"
+last_name  = "Lovelace"
+email      = "ada@example.org"
+phone      = "+33 6 00 00 00 00"
+location   = "Paris, France"
+linkedin   = "https://www.linkedin.com/in/ada-lovelace"
+github     = "https://github.com/ada"
+portfolio  = "https://ada.example.org"
+
+# Per-market overrides — the spec's "account": the French and English tracks
+# can apply with different details. Anything not set falls back to [identity].
+[accounts.fr]
+# email = "ada.fr@example.org"
+
+[accounts.en]
+# email = "ada.en@example.org"

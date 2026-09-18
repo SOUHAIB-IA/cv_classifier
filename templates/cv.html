@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<title>{{ doc.name }} — CV</title>
+<style>
+  /* ATS-safe by construction: one column, real text in reading order, standard
+     section headings, no tables, no text in images, no multi-column layout. */
+  /* Density is set by the renderer, which steps it down until the CV fits the
+     target page count — never below a readable floor. */
+  @page { size: A4; margin: {{ d.margin }}; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #1d1d1b;
+         font: {{ d.fs }}pt/{{ d.lh }} "Liberation Sans", "DejaVu Sans", Arial, Helvetica, sans-serif; }
+  h1 { font-size: {{ d.h1 }}pt; margin: 0; letter-spacing: -.01em; line-height: 1.1; }
+  .headline { font-size: {{ d.hl }}pt; font-weight: 600; color: #2f4a2f; margin: .8mm 0 1mm; }
+  .contact { font-size: 8.8pt; color: #3a3a37; }
+  .contact a { color: inherit; text-decoration: none; }
+  h2 { font-size: {{ d.fs }}pt; text-transform: uppercase; letter-spacing: .07em;
+       color: #2f4a2f; border-bottom: 1px solid #c9d3c9; padding-bottom: .5mm;
+       margin: {{ d.h2 }} 0 1.3mm; }
+  .summary { margin: 0; }
+  .item { margin: 0 0 {{ d.item }}; break-inside: avoid; }
+  .item-head { font-weight: 700; }
+  .item-meta { color: #4a4a46; font-weight: 400; }
+  ul { margin: .6mm 0 0 4.2mm; padding: 0; }
+  li { margin: 0 0 .5mm; }
+  .skills p, .lines p { margin: 0 0 .7mm; }
+  .skills b { font-weight: 700; }
+</style>
+</head>
+<body>
+  <h1>{{ doc.name }}</h1>
+  {% if doc.headline %}<div class="headline">{{ doc.headline }}</div>{% endif %}
+  <div class="contact">
+    {%- set bits = [] -%}
+    {%- if doc.contact.email %}{% set _ = bits.append(doc.contact.email) %}{% endif -%}
+    {%- if doc.contact.phone %}{% set _ = bits.append(doc.contact.phone) %}{% endif -%}
+    {%- if doc.contact.location %}{% set _ = bits.append(doc.contact.location) %}{% endif -%}
+    {{ bits | join(" · ") }}
+    {%- for l in doc.contact.links or [] %} · {% if l.url %}<a href="{{ l.url }}">{{ l.url | replace("https://", "") | replace("http://", "") }}</a>{% else %}{{ l.label }}{% endif %}{% endfor %}
+  </div>
+
+  {% if doc.summary %}
+  <h2>{{ labels.summary }}</h2>
+  <p class="summary">{{ doc.summary }}</p>
+  {% endif %}
+
+  {% for sec in doc.sections %}
+  <h2>{{ sec.title }}</h2>
+  {% if sec.kind == "skills" %}
+    <div class="skills">
+    {% for g in sec.groups or [] %}
+      <p>{% if g.label %}<b>{{ g.label }}</b> : {% endif %}{{ g["items"] | join(", ") }}</p>
+    {% endfor %}
+    </div>
+  {% elif sec.kind == "list" %}
+    {# Short entries (languages, certifications) share one line: a line each
+       wastes the page width and pushes a dense CV onto a second page. #}
+    {% set ls = sec.lines or [] %}
+    {% if ls and (ls | map("length") | max) <= 60 %}
+      <div class="lines"><p>{{ ls | join(" · ") }}</p></div>
+    {% else %}
+      <div class="lines">{% for l in ls %}<p>{{ l }}</p>{% endfor %}</div>
+    {% endif %}
+  {% else %}
+    {% for it in sec["items"] or [] %}
+    <div class="item">
+      {# Place and dates ride on the heading line, in reading order: one line
+         saved per entry, and an ATS still reads "role — org · place · dates". #}
+      {% set meta = [it.location, it.dates] | select | list %}
+      <div class="item-head">{{ it.heading }}{% if it.org %} — {{ it.org }}{% endif %}{% if meta %}<span class="item-meta"> · {{ meta | join(" · ") }}</span>{% endif %}</div>
+      {% if it.bullets %}<ul>{% for b in it.bullets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+  {% endfor %}
+</body>
+</html>

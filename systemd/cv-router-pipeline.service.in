@@ -1,0 +1,12 @@
+[Unit]
+Description=cv-router job pipeline — one fetch/route/tailor cycle
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@WORKDIR@
+ExecStart=@PYTHON@ run_pipeline.py
+EnvironmentFile=-%h/.config/cv-router/env
+# A cycle makes model calls; cap it so a hung call cannot pin the timer.
+TimeoutStartSec=45min
+Nice=10
