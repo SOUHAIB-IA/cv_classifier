@@ -318,13 +318,13 @@ LABELS = {"fr": {"summary": "Profil"}, "en": {"summary": "Profile"}}
 # is left at two pages rather than shrunk further.
 DENSITY = [
     {"fs": 9.6, "lh": 1.36, "margin": "13mm 14mm 12mm", "h2": "4mm", "item": "2.1mm",
-     "h1": 19, "hl": 11},
+     "h1": 19, "hl": 11, "ph": 25},
     {"fs": 9.1, "lh": 1.28, "margin": "11mm 12mm 10mm", "h2": "3.2mm", "item": "1.6mm",
-     "h1": 17, "hl": 10.4},
+     "h1": 17, "hl": 10.4, "ph": 23},
     {"fs": 8.7, "lh": 1.22, "margin": "9mm 11mm 8mm", "h2": "2.6mm", "item": "1.2mm",
-     "h1": 16, "hl": 10},
+     "h1": 16, "hl": 10, "ph": 21},
     {"fs": 8.4, "lh": 1.18, "margin": "8mm 10mm 7mm", "h2": "2.2mm", "item": "1mm",
-     "h1": 15, "hl": 9.6},
+     "h1": 15, "hl": 9.6, "ph": 19},
 ]
 
 # Section order by career stage. A graduate applying for a job leads with what
@@ -344,12 +344,62 @@ def reorder(doc: dict, stage: str) -> dict:
     return doc
 
 
-def render_html(doc: dict, lang: str, density: dict | None = None) -> str:
+# The em dash is never used in a CV. Spaced, it becomes a comma ("Engineer —
+# Acme" -> "Engineer, Acme"); glued, a hyphen. Applied to the whole document
+# before every render, so it holds for model suggestions, the original CV's
+# own text and your manual edits alike.
+_EM_SPACED = re.compile(r"\s*[—―]\s*(?=\S)")
+_EM = re.compile(r"[—―]")
+
+
+# A spaced en dash used as a separator ("Essentials – Coursera") reads as the
+# same mark and gets the same treatment. Between dates or numbers
+# ("09/2023 – 06/2026") it is a range, which is its proper use, and stays.
+_EN_SEPARATOR = re.compile(r"(?<![\d/.])\s+–\s+(?![\d/])")
+
+
+def no_em_dash(obj):
+    if isinstance(obj, str):
+        obj = _EN_SEPARATOR.sub(", ", obj)
+        out = _EM_SPACED.sub(lambda m: ", " if m.group(0).strip() != m.group(0) else "-", obj)
+        return _EM.sub("", out).strip() if out.rstrip().endswith(("—", "―")) else _EM.sub("-", out)
+    if isinstance(obj, list):
+        return [no_em_dash(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: no_em_dash(v) for k, v in obj.items()}
+    return obj
+
+
+_photo_cache: dict = {}
+
+
+def photo_uri(pcfg: pc.PipelineConfig, lang: str) -> str | None:
+    """Your photo as a data URI, or None if there is none for this language."""
+    if not pcfg.photo or not pcfg.photo.is_file():
+        return None
+    if pcfg.photo_langs and lang.lower() not in pcfg.photo_langs:
+        return None
+    key = (str(pcfg.photo), pcfg.photo.stat().st_mtime_ns)
+    if key not in _photo_cache:
+        import base64
+        import mimetypes
+        mime = mimetypes.guess_type(pcfg.photo.name)[0] or "image/png"
+        _photo_cache.clear()
+        _photo_cache[key] = f"data:{mime};base64," + base64.b64encode(pcfg.photo.read_bytes()).decode()
+    return _photo_cache[key]
+
+
+def render_html(doc: dict, lang: str, density: dict | None = None,
+                photo: str | None = None) -> str:
     env = Environment(loader=FileSystemLoader(ROOT / "templates"),
                       autoescape=select_autoescape(["html"]))
+    doc = no_em_dash(doc)
+    # tolerate a document edited down to its bones
+    doc.setdefault("contact", {})
+    doc.setdefault("sections", [])
     return env.get_template("cv.html").render(
         doc=doc, lang=lang, labels=LABELS.get(lang, LABELS["en"]),
-        d=density or DENSITY[0])
+        d=density or DENSITY[0], photo=photo)
 
 
 def page_count(pdf: Path) -> int:
@@ -359,11 +409,11 @@ def page_count(pdf: Path) -> int:
 
 
 def render_fitted(doc: dict, lang: str, out: Path, chrome: str,
-                  max_pages: int = 1) -> tuple[int, int]:
+                  max_pages: int = 1, photo: str | None = None) -> tuple[int, int]:
     """Render at the loosest density that fits max_pages.
     Returns (pages, density step used)."""
     for step, d in enumerate(DENSITY):
-        html_to_pdf(render_html(doc, lang, d), out, chrome)
+        html_to_pdf(render_html(doc, lang, d, photo), out, chrome)
         pages = page_count(out)
         if pages <= max_pages:
             return pages, step
@@ -441,10 +491,13 @@ def tailor_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str, *,
     base = structured(cfg, pcfg, variant, ask=ask)
     doc, report = apply_edits(base, edits)
     stage = "student" if variant.startswith("1-") else "graduate"
-    doc = reorder(doc, stage)
+    doc = no_em_dash(reorder(doc, stage))
+    report = [{**r, "suggested": no_em_dash(r.get("suggested", ""))} for r in report]
+    photo = photo_uri(pcfg, lang)
+    doc.setdefault("show_photo", photo is not None)
     out = output_path(pcfg, cfg, job, variant, lang)
     pages, step = render_fitted(doc, lang, out, find_chrome(pcfg),
-                                max_pages=pcfg.max_pages)
+                                max_pages=pcfg.max_pages, photo=photo)
     problems = verify(out, doc, report, max_pages=pcfg.max_pages)
 
     sidecar = {
@@ -528,7 +581,9 @@ def save_cv(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str,
     pdf, side, docf = cv_paths(pcfg, db, job_id)
     meta = json.loads(side.read_text()) if side.is_file() else {}
     lang = meta.get("lang", "fr")
-    pages, step = render_fitted(doc, lang, pdf, find_chrome(pcfg), max_pages=pcfg.max_pages)
+    doc = no_em_dash(doc)
+    pages, step = render_fitted(doc, lang, pdf, find_chrome(pcfg), max_pages=pcfg.max_pages,
+                                photo=photo_uri(pcfg, lang))
     problems = verify(pdf, doc, [], max_pages=pcfg.max_pages)
     docf.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     meta.update({"pages": pages, "density_step": step, "verification": problems or "ok",
@@ -536,7 +591,7 @@ def save_cv(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str,
     side.write_text(json.dumps(meta, ensure_ascii=False, indent=1))
     with db.tx():
         db.event("tailor", job_id, ok=not problems, edited_by_hand=True, pages=pages)
-    return {"pages": pages, "density_step": step, "problems": problems}
+    return {"pages": pages, "density_step": step, "problems": problems, "doc": doc}
 
 
 def validate_cv(db: DB, job_id: str) -> None:

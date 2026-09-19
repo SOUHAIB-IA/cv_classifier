@@ -2,12 +2,12 @@
 <html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
-<title>{{ doc.name }} — CV</title>
+<title>CV {{ doc.name }}</title>
 <style>
   /* ATS-safe by construction: one column, real text in reading order, standard
      section headings, no tables, no text in images, no multi-column layout. */
   /* Density is set by the renderer, which steps it down until the CV fits the
-     target page count — never below a readable floor. */
+     target page count, never below a readable floor. */
   @page { size: A4; margin: {{ d.margin }}; }
   * { box-sizing: border-box; }
   body { margin: 0; color: #1d1d1b;
@@ -15,6 +15,10 @@
   h1 { font-size: {{ d.h1 }}pt; margin: 0; letter-spacing: -.01em; line-height: 1.1; }
   .headline { font-size: {{ d.hl }}pt; font-weight: 600; color: #2f4a2f; margin: .8mm 0 1mm; }
   .contact { font-size: 8.8pt; color: #3a3a37; }
+  .head { display: flex; align-items: center; gap: 5mm; }
+  .head .who { flex: 1; min-width: 0; }
+  .photo { width: {{ d.ph }}mm; height: {{ d.ph }}mm; border-radius: 50%; object-fit: cover;
+           flex: none; }
   .contact a { color: inherit; text-decoration: none; }
   h2 { font-size: {{ d.fs }}pt; text-transform: uppercase; letter-spacing: .07em;
        color: #2f4a2f; border-bottom: 1px solid #c9d3c9; padding-bottom: .5mm;
@@ -30,6 +34,11 @@
 </style>
 </head>
 <body>
+  <div class="head">
+  {# The photo sits beside the text, never inside it: the name and headline
+     stay the first words an ATS reads. #}
+  {% if photo and doc.show_photo is not sameas false %}<img class="photo" src="{{ photo }}" alt="">{% endif %}
+  <div class="who">
   <h1>{{ doc.name }}</h1>
   {% if doc.headline %}<div class="headline">{{ doc.headline }}</div>{% endif %}
   <div class="contact">
@@ -39,6 +48,8 @@
     {%- if doc.contact.location %}{% set _ = bits.append(doc.contact.location) %}{% endif -%}
     {{ bits | join(" · ") }}
     {%- for l in doc.contact.links or [] %} · {% if l.url %}<a href="{{ l.url }}">{{ l.url | replace("https://", "") | replace("http://", "") }}</a>{% else %}{{ l.label }}{% endif %}{% endfor %}
+  </div>
+  </div>
   </div>
 
   {% if doc.summary %}
@@ -67,9 +78,9 @@
     {% for it in sec["items"] or [] %}
     <div class="item">
       {# Place and dates ride on the heading line, in reading order: one line
-         saved per entry, and an ATS still reads "role — org · place · dates". #}
+         saved per entry, and an ATS still reads "role, org · place · dates". #}
       {% set meta = [it.location, it.dates] | select | list %}
-      <div class="item-head">{{ it.heading }}{% if it.org %} — {{ it.org }}{% endif %}{% if meta %}<span class="item-meta"> · {{ meta | join(" · ") }}</span>{% endif %}</div>
+      <div class="item-head">{{ it.heading }}{% if it.org %}, {{ it.org }}{% endif %}{% if meta %}<span class="item-meta"> · {{ meta | join(" · ") }}</span>{% endif %}</div>
       {% if it.bullets %}<ul>{% for b in it.bullets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
     </div>
     {% endfor %}
