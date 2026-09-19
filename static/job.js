@@ -135,9 +135,16 @@ function renderEditor() {
   $("b-save").disabled = false;
   const c = doc.contact || (doc.contact = {});
   let h = `
-    <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px">
-      <input type="checkbox" id="show-photo" style="width:auto" ${doc.show_photo === false ? "" : "checked"}>
-      Afficher ma photo</label>
+    <div style="display:flex;gap:16px;align-items:center;margin-top:10px;font-size:13px;flex-wrap:wrap">
+      <label style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="show-photo" style="width:auto" ${doc.show_photo === false ? "" : "checked"}>
+        Afficher ma photo</label>
+      <label style="display:flex;gap:8px;align-items:center">Police
+        <select id="cv-style" style="width:auto">
+          ${[["calibri", "Calibri"], ["cambria", "Cambria"], ["garamond", "Garamond"], ["arial", "Arial"]]
+            .map(([v, l]) => `<option value="${v}" ${(doc.style || "calibri") === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select></label>
+    </div>
     <label class="f">Nom</label>${field(["name"], doc.name)}
     <label class="f">Accroche (titre sous le nom)</label>${field(["headline"], doc.headline)}
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:6px">
@@ -190,6 +197,9 @@ $("editor").addEventListener("input", ev => {
   const el = ev.target;
   if (el.id === "show-photo") {
     doc.show_photo = el.checked; setDirty(true); schedulePreview(0); return;
+  }
+  if (el.id === "cv-style") {
+    doc.style = el.value; setDirty(true); schedulePreview(0); return;
   }
   if (!el.dataset.p) return;
   const p = JSON.parse(el.dataset.p);
