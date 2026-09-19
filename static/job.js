@@ -135,6 +135,9 @@ function renderEditor() {
   $("b-save").disabled = false;
   const c = doc.contact || (doc.contact = {});
   let h = `
+    <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px">
+      <input type="checkbox" id="show-photo" style="width:auto" ${doc.show_photo === false ? "" : "checked"}>
+      Afficher ma photo</label>
     <label class="f">Nom</label>${field(["name"], doc.name)}
     <label class="f">Accroche (titre sous le nom)</label>${field(["headline"], doc.headline)}
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:6px">
@@ -185,6 +188,9 @@ function renderEditor() {
 
 $("editor").addEventListener("input", ev => {
   const el = ev.target;
+  if (el.id === "show-photo") {
+    doc.show_photo = el.checked; setDirty(true); schedulePreview(0); return;
+  }
   if (!el.dataset.p) return;
   const p = JSON.parse(el.dataset.p);
   let v = el.value;
@@ -291,6 +297,8 @@ async function save() {
   $("b-save").disabled = true; $("b-save").textContent = "Génération du PDF…";
   try {
     const r = await api(`/api/job/${JOB_ID}/cv`, { doc });
+    // the server returns the document as saved (em dashes removed, for one)
+    if (r.doc) { doc = r.doc; renderEditor(); }
     D.cv.meta = { ...D.cv.meta, pages: r.pages, density_step: r.density_step, edited_by_hand: true };
     setDirty(false); schedulePreview(0);
     toast(r.problems.length ? "PDF généré, à vérifier : " + r.problems.join(" ; ") : `PDF régénéré — ${r.pages} page(s), relu sans problème.`);

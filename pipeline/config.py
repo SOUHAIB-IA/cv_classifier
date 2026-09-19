@@ -51,6 +51,8 @@ class PipelineConfig:
     chrome_bin: str = ""
     register_tailored: bool = False
     max_pages: int = 1
+    photo: Path | None = None
+    photo_langs: list[str] = field(default_factory=list)
 
     submit_channel: str = "chrome"
     submit_hosts: list[str] = field(default_factory=list)
@@ -97,6 +99,8 @@ def load(path: Path | None = None) -> PipelineConfig:
         chrome_bin=tl.get("chrome_bin", ""),
         register_tailored=bool(tl.get("register_in_cv_library", False)),
         max_pages=int(tl.get("max_pages", 1)),
+        photo=_abs(tl["photo"]) if tl.get("photo") else None,
+        photo_langs=[x.lower() for x in tl.get("photo_langs", ["fr", "en"])],
         submit_channel=sm.get("browser_channel", "chrome"),
         submit_hosts=[h.lower() for h in sm.get("allowed_hosts", [
             "boards.greenhouse.io", "job-boards.greenhouse.io",

@@ -326,6 +326,32 @@ def main():
     finally:
         cr.ask_json = real
 
+    # ------------------------------------------------------ photo and em dash
+    print("\n12. photo, and never an em dash")
+    check("the CV template has no em dash", "—" not in (HERE / "templates" / "cv.html").read_text())
+    check("the model is told never to write one", "Never use the em dash" in matcher.ANALYSE_SYSTEM)
+    for raw, want in [("Engineer — Acme", "Engineer, Acme"), ("LLM—RAG", "LLM-RAG"),
+                      ("Essentials – Coursera", "Essentials, Coursera"),
+                      ("09/2023 – 06/2026", "09/2023 – 06/2026")]:
+        check(f"'{raw}' -> '{want}'", T.no_em_dash(raw) == want, T.no_em_dash(raw))
+    dashy = {"name": "Ada", "headline": "AI Engineer — LLM", "summary": "x",
+             "sections": [{"title": "Exp", "kind": "experience", "items": [
+                 {"heading": "Engineer", "org": "Acme", "bullets": ["Built it — fast"]}]}]}
+    html = T.render_html(dashy, "en", photo="data:image/png;base64,AAAA")
+    body = html.split("</head>", 1)[1]
+    check("nothing rendered contains an em dash, whatever the text says", "—" not in body)
+    check("the photo is rendered when there is one", 'class="photo"' in html)
+    check("…and left out when the CV turns it off",
+          'class="photo"' not in T.render_html({**dashy, "show_photo": False}, "en",
+                                              photo="data:image/png;base64,AAAA"))
+    check("…and when there is no photo", 'class="photo"' not in T.render_html(dashy, "en"))
+    pcfg_ph = pc.load(HERE / "pipeline.example.toml")
+    pcfg_ph.photo = tmp / "me.png"
+    (tmp / "me.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+    pcfg_ph.photo_langs = ["fr"]
+    check("photo limited to the languages chosen",
+          T.photo_uri(pcfg_ph, "fr") is not None and T.photo_uri(pcfg_ph, "en") is None)
+
     # ------------------------------------------------------------ web interface
     print("\n11. web interface: read, edit, validate")
     from fastapi.testclient import TestClient

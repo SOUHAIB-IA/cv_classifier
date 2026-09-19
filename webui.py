@@ -224,8 +224,10 @@ def job_tailor(job_id: str, x_cv_router: str | None = Header(default=None)):
 def job_preview(job_id: str, payload: dict):
     """Render a document to HTML exactly as the PDF will be. Read-only."""
     doc = payload.get("doc") or {}
-    return HTMLResponse(T.render_html(doc, payload.get("lang", "fr"),
-                                      T.DENSITY[int(payload.get("density", 0))]))
+    lang = payload.get("lang", "fr")
+    pcfg = pc.load()
+    return HTMLResponse(T.render_html(doc, lang, T.DENSITY[int(payload.get("density", 0))],
+                                      T.photo_uri(pcfg, lang)))
 
 
 @router.post("/api/job/{job_id:path}/cv")

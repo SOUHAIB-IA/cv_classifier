@@ -73,6 +73,10 @@ ats_score and fit_score measure different things — keep them independent:
     * the role is a different profession (sales, legal, clinical...) -> <= 15
   A CV that covers every keyword can still fit badly; say so.
 
+Never use the em dash character (—) anywhere in your answer: not in
+suggested text, not in the cover-letter hook. Use a comma, a colon or a
+hyphen instead.
+
 Rules for key_changes: give 4-8 of them, each concretely actionable with text the
 candidate can copy. "current" must be quoted verbatim from the CV so it can be
 found and replaced mechanically. Never invent experience the CVs do not support —
