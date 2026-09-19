@@ -121,7 +121,7 @@ def structured(cfg: cr.Config, pcfg: pc.PipelineConfig, base_rel: str,
     sig = cr.content_sig(text)
     cache = pcfg.structured_dir / f"{sig}.json"
     if cache.is_file():
-        return json.loads(cache.read_text())
+        return attach_links(json.loads(cache.read_text()), pdf)
 
     doc = ask(cfg, EXTRACT_SYSTEM, f"--- CV TEXT ---\n{text[:16000]}", max_tokens=8000)
     doc.setdefault("contact", {})
@@ -133,11 +133,49 @@ def structured(cfg: cr.Config, pcfg: pc.PipelineConfig, base_rel: str,
                           f"— refusing to build on it")
     pcfg.structured_dir.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
-    return doc
+    return attach_links(doc, pdf)
 
 
 class TailorError(RuntimeError):
     pass
+
+
+def pdf_links(pdf: Path) -> list[str]:
+    """The web links a CV builder stores as clickable annotations. pdftotext
+    only sees their labels ("LinkedIn"), never the address behind them."""
+    try:
+        out = subprocess.run(["pdfinfo", "-url", str(pdf)], capture_output=True,
+                             text=True, timeout=30).stdout
+    except Exception:
+        return []
+    urls = [ln.split()[-1] for ln in out.splitlines()[1:] if ln.split()]
+    return [u for u in dict.fromkeys(urls) if u.startswith(("http://", "https://"))]
+
+
+def attach_links(doc: dict, pdf: Path) -> dict:
+    """Give the contact links their real addresses, so the CV shows
+    linkedin.com/in/... rather than a bare word, and it stays clickable."""
+    urls = pdf_links(pdf)
+    if not urls:
+        return doc
+    links = doc.setdefault("contact", {}).setdefault("links", [])
+
+    def kind(u: str) -> str:
+        return "linkedin" if "linkedin.com" in u else "github" if "github.com" in u else "site"
+
+    def label_kind(lbl: str) -> str:
+        l = (lbl or "").lower()
+        return "linkedin" if "linked" in l else "github" if "git" in l else "site"
+
+    for u in urls:
+        k = kind(u)
+        match = next((l for l in links if not l.get("url") and label_kind(l.get("label")) == k), None)
+        if match:
+            match["url"] = u
+        elif not any(l.get("url") == u for l in links):
+            links.append({"label": {"linkedin": "LinkedIn", "github": "GitHub"}.get(k, "Portfolio"),
+                          "url": u})
+    return doc
 
 
 # -------------------------------------------------------------- 2. edit ------
@@ -313,18 +351,40 @@ def apply_edits(doc: dict, edits: list[dict]) -> tuple[dict, list[dict]]:
 # ------------------------------------------------------------ 3. render ------
 LABELS = {"fr": {"summary": "Profil"}, "en": {"summary": "Profile"}}
 
+# The typefaces recruiters and ATS guides recommend. Each names the metric
+# clone installed on Linux first (same glyph widths as the Microsoft font, so
+# the page breaks the same), then the original, then a safe fallback. Chrome
+# embeds the face in the PDF, so the recruiter sees it without having it.
+# `scale` evens out optical size: Calibri and Garamond set small for their
+# point size, so they get more of it.
+STYLES = {
+    "calibri": {"label": "Calibri", "scale": 1.08, "accent": "#1f3a5f", "name_ls": "0",
+                "org_style": "normal",
+                "font": '"Carlito", "Calibri", "Liberation Sans", Arial, sans-serif'},
+    "cambria": {"label": "Cambria", "scale": 1.0, "accent": "#23344d", "name_ls": ".005em",
+                "org_style": "italic",
+                "font": '"Caladea", "Cambria", Georgia, "DejaVu Serif", serif'},
+    "garamond": {"label": "Garamond", "scale": 1.16, "accent": "#2a2a2a", "name_ls": ".02em",
+                 "org_style": "italic",
+                 "font": '"EB Garamond 12", "EB Garamond", Garamond, "Times New Roman", serif'},
+    "arial": {"label": "Arial", "scale": 1.0, "accent": "#1f3a5f", "name_ls": "0",
+              "org_style": "normal",
+              "font": '"Liberation Sans", Arial, Helvetica, sans-serif'},
+}
+DEFAULT_STYLE = "calibri"
+
 # Tried in order until the CV fits the target page count. The last step is the
 # readability floor: below it a recruiter squints, so a CV that still overflows
 # is left at two pages rather than shrunk further.
 DENSITY = [
     {"fs": 9.6, "lh": 1.36, "margin": "13mm 14mm 12mm", "h2": "4mm", "item": "2.1mm",
-     "h1": 19, "hl": 11, "ph": 25},
+     "h1": 19, "hl": 11, "ph": 25, "li": ".5mm"},
     {"fs": 9.1, "lh": 1.28, "margin": "11mm 12mm 10mm", "h2": "3.2mm", "item": "1.6mm",
-     "h1": 17, "hl": 10.4, "ph": 23},
+     "h1": 17, "hl": 10.4, "ph": 23, "li": ".4mm"},
     {"fs": 8.7, "lh": 1.22, "margin": "9mm 11mm 8mm", "h2": "2.6mm", "item": "1.2mm",
-     "h1": 16, "hl": 10, "ph": 21},
-    {"fs": 8.4, "lh": 1.18, "margin": "8mm 10mm 7mm", "h2": "2.2mm", "item": "1mm",
-     "h1": 15, "hl": 9.6, "ph": 19},
+     "h1": 16, "hl": 10, "ph": 21, "li": ".3mm"},
+    {"fs": 8.4, "lh": 1.15, "margin": "8mm 10mm 7mm", "h2": "2.2mm", "item": "1mm",
+     "h1": 15, "hl": 9.6, "ph": 19, "li": ".15mm"},
 ]
 
 # Section order by career stage. A graduate applying for a job leads with what
@@ -397,9 +457,10 @@ def render_html(doc: dict, lang: str, density: dict | None = None,
     # tolerate a document edited down to its bones
     doc.setdefault("contact", {})
     doc.setdefault("sections", [])
+    st = STYLES.get(doc.get("style") or DEFAULT_STYLE, STYLES[DEFAULT_STYLE])
     return env.get_template("cv.html").render(
         doc=doc, lang=lang, labels=LABELS.get(lang, LABELS["en"]),
-        d=density or DENSITY[0], photo=photo)
+        d=density or DENSITY[0], photo=photo, st=st)
 
 
 def page_count(pdf: Path) -> int:
@@ -495,6 +556,7 @@ def tailor_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str, *,
     report = [{**r, "suggested": no_em_dash(r.get("suggested", ""))} for r in report]
     photo = photo_uri(pcfg, lang)
     doc.setdefault("show_photo", photo is not None)
+    doc.setdefault("style", pcfg.cv_style)
     out = output_path(pcfg, cfg, job, variant, lang)
     pages, step = render_fitted(doc, lang, out, find_chrome(pcfg),
                                 max_pages=pcfg.max_pages, photo=photo)
@@ -581,6 +643,8 @@ def save_cv(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str,
     pdf, side, docf = cv_paths(pcfg, db, job_id)
     meta = json.loads(side.read_text()) if side.is_file() else {}
     lang = meta.get("lang", "fr")
+    if meta.get("base_cv"):
+        doc = attach_links(doc, cfg.cv_root / meta["base_cv"])
     doc = no_em_dash(doc)
     pages, step = render_fitted(doc, lang, pdf, find_chrome(pcfg), max_pages=pcfg.max_pages,
                                 photo=photo_uri(pcfg, lang))

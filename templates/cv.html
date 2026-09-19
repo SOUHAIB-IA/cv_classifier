@@ -4,33 +4,60 @@
 <meta charset="utf-8">
 <title>CV {{ doc.name }}</title>
 <style>
-  /* ATS-safe by construction: one column, real text in reading order, standard
-     section headings, no tables, no text in images, no multi-column layout. */
-  /* Density is set by the renderer, which steps it down until the CV fits the
-     target page count, never below a readable floor. */
+  /* A conventional, recruiter-familiar CV: one column of real text in reading
+     order, standard section headings, no tables and no text inside images, so
+     an ATS parses it as it reads it. The typeface comes from the chosen style;
+     sizes come from the density step, which the renderer tightens until the
+     CV fits its page target, never below a readable floor. */
   @page { size: A4; margin: {{ d.margin }}; }
   * { box-sizing: border-box; }
-  body { margin: 0; color: #1d1d1b;
-         font: {{ d.fs }}pt/{{ d.lh }} "Liberation Sans", "DejaVu Sans", Arial, Helvetica, sans-serif; }
-  h1 { font-size: {{ d.h1 }}pt; margin: 0; letter-spacing: -.01em; line-height: 1.1; }
-  .headline { font-size: {{ d.hl }}pt; font-weight: 600; color: #2f4a2f; margin: .8mm 0 1mm; }
-  .contact { font-size: 8.8pt; color: #3a3a37; }
-  .head { display: flex; align-items: center; gap: 5mm; }
-  .head .who { flex: 1; min-width: 0; }
+  {% set fs = d.fs * st.scale %}
+  body { margin: 0; color: #22252a; font-family: {{ st.font | safe }};
+         font-size: {{ '%.2f' | format(fs) }}pt; line-height: {{ d.lh }};
+         -webkit-print-color-adjust: exact; print-color-adjust: exact;
+         font-kerning: normal; font-variant-ligatures: common-ligatures; }
+
+  /* header */
+  .head { display: flex; align-items: center; gap: 5.5mm; padding-bottom: 2.4mm;
+          border-bottom: 1.4pt solid {{ st.accent }}; }
   .photo { width: {{ d.ph }}mm; height: {{ d.ph }}mm; border-radius: 50%; object-fit: cover;
-           flex: none; }
+           flex: none; box-shadow: 0 0 0 0.8pt #d5d9df; }
+  .who { flex: 1; min-width: 0; }
+  h1 { font-size: {{ '%.1f' | format(d.h1 * st.scale) }}pt; line-height: 1.05; margin: 0;
+       color: {{ st.accent }}; font-weight: 700; letter-spacing: {{ st.name_ls }}; }
+  .headline { font-size: {{ '%.1f' | format(d.hl * st.scale) }}pt; margin: 1mm 0 1.3mm;
+              color: #3b4250; font-weight: 600; }
+  .contact { font-size: {{ '%.2f' | format(fs * 0.93) }}pt; color: #4a515c; }
   .contact a { color: inherit; text-decoration: none; }
-  h2 { font-size: {{ d.fs }}pt; text-transform: uppercase; letter-spacing: .07em;
-       color: #2f4a2f; border-bottom: 1px solid #c9d3c9; padding-bottom: .5mm;
-       margin: {{ d.h2 }} 0 1.3mm; }
-  .summary { margin: 0; }
+  .contact .sep { color: #a3aab5; padding: 0 .5mm; }
+  /* an item never breaks inside itself: a URL split on its hyphen is read by
+     an ATS as a different, wrong address. The spaces around each separator
+     is the only place the line may wrap (the space before is non-breaking,
+     so a wrapped line never starts with a stray bar); without them the whole line is one
+     unbreakable run, overflows, and Chrome shrinks the entire page to fit. */
+  .contact .ci { white-space: nowrap; }
+
+  /* sections */
+  h2 { font-size: {{ '%.2f' | format(fs * 1.02) }}pt; font-weight: 700; color: {{ st.accent }};
+       text-transform: uppercase; letter-spacing: .09em;
+       margin: {{ d.h2 }} 0 1.4mm; padding-bottom: .7mm; border-bottom: 0.6pt solid #c3cad4; }
+  .summary { margin: 0; text-align: justify; hyphens: auto; }
+
   .item { margin: 0 0 {{ d.item }}; break-inside: avoid; }
-  .item-head { font-weight: 700; }
-  .item-meta { color: #4a4a46; font-weight: 400; }
-  ul { margin: .6mm 0 0 4.2mm; padding: 0; }
-  li { margin: 0 0 .5mm; }
-  .skills p, .lines p { margin: 0 0 .7mm; }
-  .skills b { font-weight: 700; }
+  .row { display: flex; align-items: baseline; gap: 4mm; }
+  .row .l { flex: 1; min-width: 0; }
+  .row .r { flex: none; color: #4a515c; font-size: {{ '%.2f' | format(fs * 0.93) }}pt;
+            font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .role { font-weight: 700; }
+  .org { font-style: {{ st.org_style }}; color: #2f3540; }
+  ul { margin: .5mm 0 0; padding-left: 4.4mm; }
+  li { margin: 0 0 {{ d.li }}; padding-left: .6mm; }
+  li::marker { color: {{ st.accent }}; }
+
+  /* skills: label column + list */
+  .skills { display: grid; grid-template-columns: max-content 1fr; column-gap: 3.5mm; row-gap: .7mm; }
+  .skills .lab { font-weight: 700; color: #2f3540; }
+  .lines p { margin: 0 0 .6mm; }
 </style>
 </head>
 <body>
@@ -39,16 +66,20 @@
      stay the first words an ATS reads. #}
   {% if photo and doc.show_photo is not sameas false %}<img class="photo" src="{{ photo }}" alt="">{% endif %}
   <div class="who">
-  <h1>{{ doc.name }}</h1>
-  {% if doc.headline %}<div class="headline">{{ doc.headline }}</div>{% endif %}
-  <div class="contact">
-    {%- set bits = [] -%}
-    {%- if doc.contact.email %}{% set _ = bits.append(doc.contact.email) %}{% endif -%}
-    {%- if doc.contact.phone %}{% set _ = bits.append(doc.contact.phone) %}{% endif -%}
-    {%- if doc.contact.location %}{% set _ = bits.append(doc.contact.location) %}{% endif -%}
-    {{ bits | join(" · ") }}
-    {%- for l in doc.contact.links or [] %} · {% if l.url %}<a href="{{ l.url }}">{{ l.url | replace("https://", "") | replace("http://", "") }}</a>{% else %}{{ l.label }}{% endif %}{% endfor %}
-  </div>
+    <h1>{{ doc.name }}</h1>
+    {% if doc.headline %}<div class="headline">{{ doc.headline }}</div>{% endif %}
+    <div class="contact">
+      {#- joiner() hands back the separator from the second call on; passing it
+          as markup keeps the autoescaper from turning it into visible text. -#}
+      {%- set sep = joiner('&nbsp;<span class="sep">|</span> ' | safe) -%}
+      {%- if doc.contact.email %}{{ sep() }}<span class="ci">{{ doc.contact.email }}</span>{% endif -%}
+      {%- if doc.contact.phone %}{{ sep() }}<span class="ci">{{ doc.contact.phone }}</span>{% endif -%}
+      {%- if doc.contact.location %}{{ sep() }}<span class="ci">{{ doc.contact.location }}</span>{% endif -%}
+      {%- for l in doc.contact.links or [] -%}
+        {%- if l.url %}{{ sep() }}<a class="ci" href="{{ l.url }}">{{ l.url | replace("https://", "") | replace("http://", "") | replace("www.", "") | trim("/") }}</a>
+        {%- elif l.label %}{{ sep() }}<span class="ci">{{ l.label }}</span>{% endif -%}
+      {%- endfor %}
+    </div>
   </div>
   </div>
 
@@ -62,7 +93,8 @@
   {% if sec.kind == "skills" %}
     <div class="skills">
     {% for g in sec.groups or [] %}
-      <p>{% if g.label %}<b>{{ g.label }}</b> : {% endif %}{{ g["items"] | join(", ") }}</p>
+      {% if g.label %}<div class="lab">{{ g.label }}</div><div>{{ g["items"] | join(", ") }}</div>
+      {% else %}<div style="grid-column: 1 / -1">{{ g["items"] | join(", ") }}</div>{% endif %}
     {% endfor %}
     </div>
   {% elif sec.kind == "list" %}
@@ -70,17 +102,20 @@
        wastes the page width and pushes a dense CV onto a second page. #}
     {% set ls = sec.lines or [] %}
     {% if ls and (ls | map("length") | max) <= 60 %}
-      <div class="lines"><p>{{ ls | join(" · ") }}</p></div>
+      <div class="lines"><p>{{ ls | join("  |  ") }}</p></div>
     {% else %}
       <div class="lines">{% for l in ls %}<p>{{ l }}</p>{% endfor %}</div>
     {% endif %}
   {% else %}
     {% for it in sec["items"] or [] %}
     <div class="item">
-      {# Place and dates ride on the heading line, in reading order: one line
-         saved per entry, and an ATS still reads "role, org · place · dates". #}
+      {# Role and employer on the left, place and dates on the right, in that
+         order in the text too: an ATS reads "role, employer, place, dates". #}
       {% set meta = [it.location, it.dates] | select | list %}
-      <div class="item-head">{{ it.heading }}{% if it.org %}, {{ it.org }}{% endif %}{% if meta %}<span class="item-meta"> · {{ meta | join(" · ") }}</span>{% endif %}</div>
+      <div class="row">
+        <div class="l"><span class="role">{{ it.heading }}</span>{% if it.org %}, <span class="org">{{ it.org }}</span>{% endif %}</div>
+        {% if meta %}<div class="r">{{ meta | join("  |  ") }}</div>{% endif %}
+      </div>
       {% if it.bullets %}<ul>{% for b in it.bullets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
     </div>
     {% endfor %}

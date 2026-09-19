@@ -94,6 +94,9 @@ max_pages = 1
 # be limited to some languages. Each CV can also turn it off in the editor.
 photo = ""
 photo_langs = ["fr", "en"]
+# Typeface: calibri (default) | cambria | garamond | arial. Each CV can switch
+# from the editor.
+style = "calibri"
 chrome_bin = ""   # "" = auto-detect google-chrome / chromium
 # Tailored CVs are one-offs; keeping them out of the CV library stops it
 # filling with per-job copies. Set true to have them indexed like any CV.

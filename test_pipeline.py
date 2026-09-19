@@ -352,6 +352,50 @@ def main():
     check("photo limited to the languages chosen",
           T.photo_uri(pcfg_ph, "fr") is not None and T.photo_uri(pcfg_ph, "en") is None)
 
+    # ----------------------------------------------------- a CV that looks right
+    print("\n13. typography and contact line")
+    if chrome:
+        import subprocess as sp
+        pro = {"name": "Ada Lovelace", "headline": "AI Engineer",
+               "contact": {"email": "ada@example.org", "phone": "+33 6 00 00 00 00",
+                           "links": [{"label": "LinkedIn",
+                                      "url": "https://www.linkedin.com/in/ada-lovelace-853a011a5"},
+                                     {"label": "Portfolio", "url": "https://ada-lovelace.vercel.app/"},
+                                     {"label": "GitHub", "url": "https://github.com/ADA-LOVELACE"}]},
+               "summary": "Engineer.", "sections": [
+                   {"title": "Experience", "kind": "experience", "items": [
+                       {"heading": "AI Engineer", "org": "Acme", "dates": "2025", "bullets": ["Built it."]}]}]}
+        fonts_want = {"calibri": "Carlito", "cambria": "Caladea", "arial": "LiberationSans"}
+        installed = sp.run(["fc-list", ":", "family"], capture_output=True, text=True).stdout
+        for style, face in fonts_want.items():
+            if face.replace("LiberationSans", "Liberation Sans") not in installed:
+                print(f"  skip  {style} (font not installed)")
+                continue
+            out = tmp / f"font-{style}.pdf"
+            T.html_to_pdf(T.render_html({**pro, "style": style}, "en"), out, chrome)
+            emb = sp.run(["pdffonts", str(out)], capture_output=True, text=True).stdout
+            check(f"{style}: the real typeface is embedded, not a fallback",
+                  face in emb and "Tinos" not in emb, emb.splitlines()[2:4])
+        out = tmp / "contact.pdf"
+        T.html_to_pdf(T.render_html(pro, "en"), out, chrome)
+        txt = cr.pdf_text(out, layout=False)
+        check("no markup leaks into the contact line", "<span" not in txt and "&" not in txt)
+        check("addresses are read whole, never split on their hyphen",
+              all(u in txt for u in ["linkedin.com/in/ada-lovelace-853a011a5",
+                                     "ada-lovelace.vercel.app", "github.com/ADA-LOVELACE"]))
+        check("links stay clickable in the PDF", len(T.pdf_links(out)) == 3)
+    doc_l = {"contact": {"links": [{"label": "LinkedIn"}, {"label": "Protfolio"}]}}
+    real_links = T.pdf_links
+    T.pdf_links = lambda p: ["https://www.linkedin.com/in/x", "https://x.vercel.app/",
+                             "https://github.com/X"]
+    try:
+        T.attach_links(doc_l, Path("/dev/null"))
+    finally:
+        T.pdf_links = real_links
+    urls = [l.get("url") for l in doc_l["contact"]["links"]]
+    check("real addresses are attached to their labels, even a misspelt one",
+          urls == ["https://www.linkedin.com/in/x", "https://x.vercel.app/", "https://github.com/X"], urls)
+
     # ------------------------------------------------------------ web interface
     print("\n11. web interface: read, edit, validate")
     from fastapi.testclient import TestClient
