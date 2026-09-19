@@ -67,7 +67,10 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>CV Router</h1>
+  <div style="display:flex;align-items:baseline;gap:16px">
+    <h1 style="flex:1">CV Router</h1>
+    <a href="/pipeline" style="font-size:13px;font-weight:600;color:var(--accent)">Pipeline de candidatures →</a>
+  </div>
   <div class="sub">{{ n_cvs }} CV indexés — {{ cv_root }}</div>
 
   <form method="post" class="card" onsubmit="this.q.disabled=true;this.q.textContent='Analyse en cours…'">

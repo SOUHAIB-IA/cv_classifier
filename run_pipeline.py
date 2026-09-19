@@ -53,14 +53,14 @@ def cycle(*, dry: bool = False, do_fetch: bool = True, boards: int | None = None
         out["tailor"] = {"tailored": tailored, "failed": failed}
 
         TR.export(db, pcfg.tracker_xlsx)
-        staged = db.one("SELECT COUNT(*) FROM applications WHERE status='staged'")[0]
-        review = db.one("SELECT COUNT(*) FROM applications WHERE status='review'")[0]
-        out["waiting"] = {"staged": staged, "review": review}
-        if tailored or out["route"].get("review"):
+        n = dict(db.q("SELECT status, COUNT(*) FROM applications "
+                      "WHERE status IN ('draft','staged','review') GROUP BY status"))
+        draft, staged, review = n.get("draft", 0), n.get("staged", 0), n.get("review", 0)
+        out["waiting"] = {"draft": draft, "staged": staged, "review": review}
+        if tailored or out["route"].get("review"):  # drafts or reviews wait for you
             cr.notify(cfg, "filed", "cv-router: candidatures prêtes",
-                      f"{staged} à soumettre · {review} en revue\n"
-                      f"python -m pipeline.submit --next\n"
-                      f"python -m pipeline.review")
+                      f"{draft} CV à relire · {staged} à soumettre · {review} en revue\n"
+                      f"http://127.0.0.1:{cfg.port}/pipeline")
     return out
 
 

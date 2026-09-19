@@ -326,6 +326,75 @@ def main():
     finally:
         cr.ask_json = real
 
+    # ------------------------------------------------------------ web interface
+    print("\n11. web interface: read, edit, validate")
+    from fastapi.testclient import TestClient
+    import portal
+    import webui
+    # point the UI at the test database — a connection per request, as in production
+    webui._ctx = lambda: (pcfg, cfg, DB(pcfg.db))
+    client = TestClient(portal.app)
+    H = {"X-CV-Router": "1"}
+
+    check("dashboard state answers", client.get("/api/pipeline/state").status_code == 200)
+    r = client.post("/api/jobs", json={"company": "UI Co", "title": "ML Engineer",
+                                       "jd": "We build LLM systems in Python. " * 5})
+    check("a change without the X-CV-Router header is refused", r.status_code == 403)
+    r = client.post("/api/jobs", headers=H, json={"company": "UI Co", "title": "ML Engineer",
+                                                  "jd": "We build LLM systems in Python. " * 5})
+    jid = r.json().get("job_id", "")
+    check("a job can be added by hand", r.status_code == 200 and jid.startswith("manual:"))
+
+    variant = "2-Graduate/AI-ML-Engineering/cv-0.pdf"
+    lines = ["Ada 0", "AI Engineer"] + testkit.SAMPLE_TEXT[3:]
+    extracted = {"name": "Ada 0", "headline": "AI Engineer", "contact": {},
+                 "summary": " ".join(lines[2:]), "sections": [
+                     {"title": "Skills", "kind": "skills",
+                      "groups": [{"label": "Stack", "items": ["Python", "Docker"]}]}]}
+    real_ask = cr.ask_json
+    cr.ask_json = lambda *a, **k: json.loads(json.dumps(extracted))
+    try:
+        O.evaluate_job(db, pcfg, cfg, dict(db.one("SELECT * FROM jobs WHERE id=?", jid)),
+                       match_fn=lambda c, jd, **k: {
+                           "best_variant": variant, "fit_score": 88, "ats_score": 80,
+                           "job_language": "en", "fit_reason": "stub",
+                           "suggested_edits": [{"section": "Title", "current": "AI Engineer",
+                                                "suggested": "AI Engineer (LLM)"}]})
+        if chrome:
+            r = client.post(f"/api/job/{jid}/tailor", headers=H)
+            check("the CV is tailored from the UI", r.status_code == 200, r.text[:120])
+            st = db.one("SELECT status FROM applications WHERE job_id=?", jid)["status"]
+            check("a tailored CV starts as a draft you must read", st == "draft", st)
+
+            data = client.get(f"/api/job/{jid}").json()
+            check("the editor gets the document, the original and the edit report",
+                  data["cv"]["doc"]["headline"] == "AI Engineer (LLM)"
+                  and data["cv"]["base"]["headline"] == "AI Engineer"
+                  and data["cv"]["meta"]["edits"][0]["status"] == "applied")
+
+            doc = data["cv"]["doc"]
+            doc["headline"] = "Machine Learning Engineer — edited by hand"
+            html = client.post(f"/api/job/{jid}/preview", json={"doc": doc}).text
+            check("preview renders the edited document", "edited by hand" in html)
+            r = client.post(f"/api/job/{jid}/cv", headers=H, json={"doc": doc})
+            check("saving regenerates the PDF", r.status_code == 200 and r.json()["pages"] == 1,
+                  r.text[:120])
+            pdf = client.get(f"/job/{jid}/cv.pdf")
+            check("the PDF served is the edited one", pdf.status_code == 200)
+            p = tmp / "served.pdf"
+            p.write_bytes(pdf.content)
+            check("…and an ATS reads the hand edit in it", "edited by hand" in cr.pdf_text(p))
+
+            r = client.post(f"/api/job/{jid}/status", headers=H, json={"action": "validate"})
+            check("validating moves the draft to ready-to-submit",
+                  r.status_code == 200 and r.json()["status"] == "staged")
+            r = client.post(f"/api/job/{jid}/status", headers=H, json={"action": "applied"})
+            check("outcomes can be recorded from the UI", r.json()["status"] == "applied")
+        else:
+            print("  skip  UI tailoring checks (no Chrome)")
+    finally:
+        cr.ask_json = real_ask
+
     shutil.rmtree(tmp)
     print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
     return 0 if ok else 1
