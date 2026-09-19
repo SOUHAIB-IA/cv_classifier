@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Offre — CV Router</title>
+<title>Offre · CV Router</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-  .panes { display: grid; grid-template-columns: 340px minmax(0, 1fr) minmax(0, 1fr); gap: 14px;
+  .panes { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(0, 1.35fr); gap: 14px;
            margin-top: 14px; align-items: start; }
   @media (max-width: 1150px) { .panes { grid-template-columns: 1fr; } }
   .sticky { position: sticky; top: 64px; }
@@ -34,9 +34,29 @@
   .ico { padding: 3px 7px; font-size: 12px; font-weight: 500; line-height: 1.2; }
   .chg { background: var(--info-soft) !important; border-color: var(--info) !important; }
   .dirty { color: var(--warn); font-size: 12px; font-weight: 600; }
-  .prev-wrap { background: #888; border-radius: 8px; overflow: hidden; }
-  .prev-wrap iframe { border: 0; width: 794px; height: 1123px; background: #fff;
-                      transform-origin: 0 0; display: block; }
+  /* The preview is the real A4 page (794 x 1123 px at 96 dpi), scaled. The
+     sizer takes the scaled size so the wrapper scrolls correctly when zoomed. */
+  .prev-wrap { background: #7c7f86; border-radius: 8px; overflow: auto; padding: 12px;
+               max-height: calc(100vh - 150px); }
+  .sizer { position: relative; margin: 0 auto; }
+  .prev-wrap iframe { border: 0; width: 794px; background: #fff; position: absolute; top: 0; left: 0;
+                      transform-origin: 0 0; box-shadow: 0 2px 14px rgba(0,0,0,.35); }
+  .pagebreak { position: absolute; left: -6px; right: -6px; border-top: 2px dashed #e0413d;
+               pointer-events: none; }
+  .pagebreak span { position: absolute; right: 0; top: -19px; font: 600 11px var(--mono);
+                    color: #fff; background: #e0413d; padding: 1px 6px; border-radius: 3px; }
+  .zoom { display: flex; gap: 4px; align-items: center; }
+  .zoom button { padding: 4px 9px; font-size: 12px; }
+  .zoom .lvl { font: 600 12px var(--mono); min-width: 44px; text-align: center; color: var(--muted); }
+  /* full screen */
+  /* a sticky ancestor is its own stacking context and would trap the fixed
+     card under the top bar, so it stops being sticky while expanded */
+  body.pv-open .sticky { position: static; }
+  .pv-card.expanded { position: fixed; inset: 0; z-index: 100; border-radius: 0; margin: 0;
+                      display: flex; flex-direction: column; padding: 12px 18px;
+                      padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+  .pv-card.expanded .prev-wrap { flex: 1; max-height: none; }
+  .pv-card.expanded .hint { display: none; }
   .jd { white-space: pre-wrap; font-size: 12.5px; max-height: 420px; overflow: auto; margin-top: 8px; }
   .legend { font-size: 12px; color: var(--muted); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--info-soft);
@@ -57,11 +77,11 @@
   <div class="panes">
     <!-- verdict -->
     <div>
-      <div class="card" id="verdict"><div class="empty">—</div></div>
+      <div class="card" id="verdict"><div class="empty">-</div></div>
       <div class="card" style="margin-top:14px">
         <h2>Modifications proposées</h2>
         <div class="legend" style="margin-bottom:8px">Appliquées automatiquement quand le texte cité a été retrouvé dans ton CV. Tu peux en annuler une, ou recopier une suggestion refusée à la main.</div>
-        <div id="edits"><div class="empty">—</div></div>
+        <div id="edits"><div class="empty">-</div></div>
       </div>
       <div class="card" style="margin-top:14px">
         <details><summary>Annonce complète</summary><div class="jd" id="jd"></div></details>
@@ -75,21 +95,30 @@
           <h2 style="margin:0;flex:1">Le CV qui sera envoyé</h2>
           <button id="b-save" class="primary" disabled>Enregistrer et régénérer le PDF</button>
         </div>
-        <div class="legend" style="margin-top:6px"><i></i>différent de ton CV d'origine — survole pour voir l'original</div>
+        <div class="legend" style="margin-top:6px"><i></i>différent de ton CV d'origine : survole pour voir l'original</div>
         <div id="editor"><div class="empty" style="margin-top:10px">Aucun CV adapté pour cette offre pour l'instant.</div></div>
       </div>
     </div>
 
     <!-- preview -->
     <div class="sticky">
-      <div class="card">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <div class="card pv-card" id="pv-card">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
           <h2 style="margin:0;flex:1">Aperçu</h2>
           <span class="sub" id="pageinfo"></span>
+          <div class="zoom">
+            <button id="z-out" title="Réduire (−)">−</button>
+            <span class="lvl" id="z-lvl">ajusté</span>
+            <button id="z-in" title="Agrandir (+)">+</button>
+            <button id="z-fit" title="Ajuster à la largeur">Ajuster</button>
+          </div>
+          <button id="b-expand" class="primary small">Agrandir ⤢</button>
           <a class="btn small" id="b-pdf" target="_blank" href="#">Ouvrir le PDF</a>
         </div>
-        <div class="prev-wrap" id="pw"><iframe id="preview" title="Aperçu du CV"></iframe></div>
-        <div class="sub" style="margin-top:6px">Rendu au premier palier de densité ; le PDF se resserre si besoin pour tenir sur une page.</div>
+        <div class="prev-wrap" id="pw">
+          <div class="sizer" id="sizer"><iframe id="preview" title="Aperçu du CV"></iframe></div>
+        </div>
+        <div class="sub hint" style="margin-top:6px">Page A4 réelle, marges comprises. Le trait rouge signale un débordement ; le nombre de pages exact est celui du PDF enregistré.</div>
       </div>
     </div>
   </div>

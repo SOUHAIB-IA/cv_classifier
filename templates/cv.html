@@ -10,6 +10,9 @@
      sizes come from the density step, which the renderer tightens until the
      CV fits its page target, never below a readable floor. */
   @page { size: A4; margin: {{ d.margin }}; }
+  /* On screen (the editor's preview) there is no @page, so draw the same
+     margins as padding: the preview then wraps lines exactly as the PDF does. */
+  @media screen { html { background: #fff; } body { padding: {{ d.margin }}; } }
   * { box-sizing: border-box; }
   {% set fs = d.fs * st.scale %}
   body { margin: 0; color: #22252a; font-family: {{ st.font | safe }};
