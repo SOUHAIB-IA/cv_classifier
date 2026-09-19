@@ -16,16 +16,20 @@ from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import cvrouter as cr
 import matcher
+import webui
 
 HERE = Path(__file__).resolve().parent
 cfg = cr.load_config()
 log = cr.setup_logging(cfg, "portal")
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 app = FastAPI(title="CV Router")
+app.include_router(webui.router)           # /pipeline dashboard and the CV editor
+app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 _index_cache: dict = {"mtime": None, "idx": None}
 _index_lock = threading.Lock()
@@ -68,6 +72,8 @@ def match(request: Request, job: str = Form(...)):
            "cv_root": str(cfg.cv_root), "result": None, "error": None}
     try:
         ctx["result"] = analyse(job)
+    except ValueError as e:                 # bad input, not a failure
+        ctx["error"] = str(e)
     except Exception as e:
         log.exception("match failed")
         ctx["error"] = str(e)

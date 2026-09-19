@@ -191,43 +191,17 @@ def evaluate(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, *,
                 f"(pre-screen {job['prefilter_score']:.2f})")
             continue
 
-        db.event("match", job["id"], prefilter=job["prefilter_score"])  # charge first
         try:
-            res = match_fn(cfg, job["jd_text"], title=job["title"],
-                           company=job["company"], location=job["location"], idx=idx)
+            decision, fit, variant = evaluate_job(db, pcfg, cfg, job, idx=idx,
+                                                  match_fn=match_fn)
         except cr.AIError as e:
-            db.event("error", job["id"], reason=str(e)[:300])
             log(f"  !! model unavailable, stopping evaluation: {e}")
             stats["errors"] += 1
             break
         except Exception as e:
-            db.event("error", job["id"], reason=f"{type(e).__name__}: {e}"[:300])
             log(f"  !! {job['company']} — {job['title']}: {e}")
             stats["errors"] += 1
             continue
-
-        fit = int(res["fit_score"])
-        decision = decide(fit, pcfg)
-        lang = res.get("job_language") or job["language"] or "en"
-        variant = res["best_variant"]
-        with db.tx():
-            db.save_match(job["id"], {
-                "fit_score": fit, "ats_score": res.get("ats_score"),
-                "recommended_variant": variant, "recommended_account": lang,
-                "suggested_edits": res.get("suggested_edits", []),
-                "decision": decision, "reason": res.get("fit_reason", ""),
-                "raw": res,
-            })
-            db.set_stage(job["id"], decision if decision != "skip" else "skipped",
-                         status="processed", language=lang)
-            db.upsert_application(
-                job["id"], decision=decision, fit_score=fit,
-                language=lang, account=lang, cv_variant=_variant_label(variant),
-                status={"auto": "pending", "review": "review",
-                        "skip": "skipped"}[decision],
-                notes=res.get("fit_reason", "")[:500])
-            db.event("route", job["id"], decision=decision, fit=fit,
-                     ats=res.get("ats_score"), variant=variant)
         stats["evaluated"] += 1
         stats[decision] += 1
         log(f"  {decision:6s} fit {fit:3d}  {job['company'][:16]:16s} "
@@ -235,6 +209,41 @@ def evaluate(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, *,
 
     stats["budget_left"] = max(0, pcfg.daily_match_budget - db.matches_today())
     return stats
+
+
+def evaluate_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job: dict, *,
+                 idx: cr.Index | None = None, match_fn=None) -> tuple[str, int, str]:
+    """Send ONE job through cv-router and record the verdict.
+    Returns (decision, fit_score, chosen CV). Charges the budget first."""
+    match_fn = match_fn or matcher.match_job
+    db.event("match", job["id"], prefilter=job.get("prefilter_score"))
+    try:
+        res = match_fn(cfg, job["jd_text"], title=job["title"], company=job["company"],
+                       location=job.get("location") or "", idx=idx or cr.Index(cfg))
+    except Exception as e:
+        db.event("error", job["id"], reason=f"{type(e).__name__}: {e}"[:300])
+        raise
+    fit = int(res["fit_score"])
+    decision = decide(fit, pcfg)
+    lang = res.get("job_language") or job.get("language") or "en"
+    variant = res["best_variant"]
+    with db.tx():
+        db.save_match(job["id"], {
+            "fit_score": fit, "ats_score": res.get("ats_score"),
+            "recommended_variant": variant, "recommended_account": lang,
+            "suggested_edits": res.get("suggested_edits", []),
+            "decision": decision, "reason": res.get("fit_reason", ""), "raw": res,
+        })
+        db.set_stage(job["id"], decision if decision != "skip" else "skipped",
+                     status="processed", language=lang)
+        db.upsert_application(
+            job["id"], decision=decision, fit_score=fit, language=lang, account=lang,
+            cv_variant=_variant_label(variant),
+            status={"auto": "pending", "review": "review", "skip": "skipped"}[decision],
+            notes=res.get("fit_reason", "")[:500])
+        db.event("route", job["id"], decision=decision, fit=fit,
+                 ats=res.get("ats_score"), variant=variant)
+    return decision, fit, variant
 
 
 def route(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, *, max_matches=None,

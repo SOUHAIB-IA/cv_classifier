@@ -98,7 +98,7 @@ def export(db: DB, path) -> None:
     bold = Font(bold=True, color="FFFFFF")
     head = PatternFill("solid", fgColor="3D5A3D")
     tint = {"applied": "E8F2E8", "interview": "CFE8CF", "offer": "B5DDB5",
-            "staged": "FFF4DC", "pending": "FFF4DC", "review": "FDEBD3",
+            "staged": "FFF4DC", "pending": "FFF4DC", "draft": "EAF0FB", "review": "FDEBD3",
             "rejected": "F6E0E0", "skipped": "F2F2F2"}
 
     def sheet(ws, header, rows, widths):

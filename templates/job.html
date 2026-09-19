@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offre — CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+  .panes { display: grid; grid-template-columns: 340px minmax(0, 1fr) minmax(0, 1fr); gap: 14px;
+           margin-top: 14px; align-items: start; }
+  @media (max-width: 1150px) { .panes { grid-template-columns: 1fr; } }
+  .sticky { position: sticky; top: 64px; }
+  .head { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .head .t { flex: 1; min-width: 280px; }
+  .scores { display: flex; gap: 10px; }
+  .score { text-align: center; padding: 6px 12px; border-radius: 8px; background: var(--bg);
+           border: 1px solid var(--line); }
+  .score b { display: block; font: 700 22px var(--mono); }
+  .score span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .edit { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; margin-bottom: 8px; font-size: 12.5px; }
+  .edit .h { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .edit .sec { font-weight: 600; flex: 1; }
+  .was { color: var(--bad); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+  .now { color: var(--ink); background: var(--accent-soft); border-radius: 4px; padding: 1px 3px; }
+  .why { color: var(--muted); margin-top: 4px; }
+  .ed-sec { border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; margin-top: 12px; }
+  .ed-sec > .h { display: flex; gap: 6px; align-items: center; }
+  .ed-sec > .h input { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .ed-item { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; margin-top: 10px; }
+  .r4 { display: grid; grid-template-columns: 2fr 2fr 1.2fr 1.2fr; gap: 6px; }
+  .bul { display: flex; gap: 5px; align-items: flex-start; margin-top: 5px; }
+  .bul textarea { min-height: 38px; }
+  .ico { padding: 3px 7px; font-size: 12px; font-weight: 500; line-height: 1.2; }
+  .chg { background: var(--info-soft) !important; border-color: var(--info) !important; }
+  .dirty { color: var(--warn); font-size: 12px; font-weight: 600; }
+  .prev-wrap { background: #888; border-radius: 8px; overflow: hidden; }
+  .prev-wrap iframe { border: 0; width: 794px; height: 1123px; background: #fff;
+                      transform-origin: 0 0; display: block; }
+  .jd { white-space: pre-wrap; font-size: 12.5px; max-height: 420px; overflow: auto; margin-top: 8px; }
+  .legend { font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--info-soft);
+              border: 1px solid var(--info); vertical-align: -1px; margin-right: 4px; }
+</style>
+</head>
+<body>
+<nav class="top">
+  <b>CV Router</b>
+  <a href="/">Analyser une offre</a>
+  <a href="/pipeline" class="on">Pipeline</a>
+  <span class="sp"></span>
+  <span class="dirty" id="dirty"></span>
+</nav>
+<main>
+  <div class="card head" id="head"><div class="empty">Chargement…</div></div>
+
+  <div class="panes">
+    <!-- verdict -->
+    <div>
+      <div class="card" id="verdict"><div class="empty">—</div></div>
+      <div class="card" style="margin-top:14px">
+        <h2>Modifications proposées</h2>
+        <div class="legend" style="margin-bottom:8px">Appliquées automatiquement quand le texte cité a été retrouvé dans ton CV. Tu peux en annuler une, ou recopier une suggestion refusée à la main.</div>
+        <div id="edits"><div class="empty">—</div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <details><summary>Annonce complète</summary><div class="jd" id="jd"></div></details>
+      </div>
+    </div>
+
+    <!-- editor -->
+    <div>
+      <div class="card" id="editor-card">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <h2 style="margin:0;flex:1">Le CV qui sera envoyé</h2>
+          <button id="b-save" class="primary" disabled>Enregistrer et régénérer le PDF</button>
+        </div>
+        <div class="legend" style="margin-top:6px"><i></i>différent de ton CV d'origine — survole pour voir l'original</div>
+        <div id="editor"><div class="empty" style="margin-top:10px">Aucun CV adapté pour cette offre pour l'instant.</div></div>
+      </div>
+    </div>
+
+    <!-- preview -->
+    <div class="sticky">
+      <div class="card">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <h2 style="margin:0;flex:1">Aperçu</h2>
+          <span class="sub" id="pageinfo"></span>
+          <a class="btn small" id="b-pdf" target="_blank" href="#">Ouvrir le PDF</a>
+        </div>
+        <div class="prev-wrap" id="pw"><iframe id="preview" title="Aperçu du CV"></iframe></div>
+        <div class="sub" style="margin-top:6px">Rendu au premier palier de densité ; le PDF se resserre si besoin pour tenir sur une page.</div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<script>const JOB_ID = {{ job_id | tojson }};</script>
+<script src="/static/common.js"></script>
+<script src="/static/job.js"></script>
+</body>
+</html>

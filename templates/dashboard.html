@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline — CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<nav class="top">
+  <b>CV Router</b>
+  <a href="/">Analyser une offre</a>
+  <a href="/pipeline" class="on">Pipeline</a>
+  <span class="sp"></span>
+  <span class="pill"><span class="dot" id="live"></span><span id="livetxt">à l'arrêt</span></span>
+</nav>
+<main>
+  <h1>Pipeline de candidatures</h1>
+  <div class="sub">Rafraîchi automatiquement. Chaque CV adapté est un brouillon tant que tu ne l'as pas relu et validé.</div>
+
+  <!-- funnel -->
+  <div class="grid g4" style="margin-top:18px" id="funnel"></div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <!-- controls -->
+    <div class="card">
+      <h2>Lancer</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="b-dry">Cycle à blanc</button>
+        <button id="b-one" class="primary">Évaluer la meilleure offre</button>
+        <button id="b-fetch">Collecter + évaluer 3</button>
+      </div>
+      <div class="sub" style="margin-top:8px">
+        Budget modèle aujourd'hui : <b id="budget">–</b> offres évaluées.
+        Une évaluation = 2 appels. Seuils : auto ≥ <b id="th-auto"></b>, revue ≥ <b id="th-rev"></b>.
+      </div>
+      <h2 style="margin-top:14px">Sortie du dernier cycle</h2>
+      <pre class="log" id="log">—</pre>
+    </div>
+
+    <!-- manual add -->
+    <div class="card">
+      <h2>Ajouter une offre à la main</h2>
+      <div class="sub">LinkedIn, Rekrute, un e-mail de recruteur… Elle entre dans le pipeline comme les autres.</div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px">
+        <div><label class="f">Entreprise</label><input id="m-company"></div>
+        <div><label class="f">Intitulé</label><input id="m-title"></div>
+        <div><label class="f">Lieu</label><input id="m-loc" placeholder="Casablanca (hybride)"></div>
+        <div><label class="f">Lien</label><input id="m-url" placeholder="https://…"></div>
+      </div>
+      <label class="f">Description complète</label>
+      <textarea id="m-jd" rows="6" placeholder="Collez l'annonce entière…"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button id="m-add">Ajouter</button>
+        <button id="m-add-eval" class="primary">Ajouter et évaluer maintenant</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- queues -->
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><h2>CV à relire <span class="tag draft" id="n-draft">0</span></h2><div class="list" id="q-draft"></div></div>
+    <div class="card"><h2>Prêtes à soumettre <span class="tag staged" id="n-staged">0</span></h2><div class="list" id="q-staged"></div></div>
+    <div class="card"><h2>En revue (fit moyen) <span class="tag review" id="n-review">0</span></h2><div class="list" id="q-review"></div></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h2>Décisions récentes</h2>
+      <div class="scroll"><table><thead><tr><th>Fit</th><th>ATS</th><th>Offre</th><th>Statut</th></tr></thead>
+      <tbody id="recent"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Candidates en attente d'évaluation</h2>
+      <div class="sub">Passées par le pré-filtre gratuit, classées par score. Les premières seront évaluées au prochain cycle.</div>
+      <div class="scroll" style="margin-top:8px"><table><thead><tr><th>Pré-filtre</th><th>Offre</th><th></th></tr></thead>
+      <tbody id="cands"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h2>Journal en direct</h2>
+      <div class="scroll"><table><tbody id="events"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Tableaux d'offres</h2>
+      <div class="scroll"><table><thead><tr><th>Source</th><th>Entreprise</th><th>Offres</th><th>Collecte</th></tr></thead>
+      <tbody id="boards"></tbody></table></div>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

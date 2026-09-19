@@ -99,12 +99,13 @@ CREATE INDEX IF NOT EXISTS events_kind_ts ON events(kind, ts);
 # skipped   decided not to apply (score, prefilter, duplicate)
 # review    waiting for you in the review queue
 # pending   approved / auto — CV being tailored
-# staged    tailored CV ready, form waiting for your click
+# draft     CV tailored automatically, waiting for you to read and validate it
+# staged    CV validated by you, form waiting for your click
 # applied   you clicked submit
 # rejected / interview / offer / withdrawn   outcomes you record afterwards
-STATUSES = ("skipped", "review", "pending", "staged", "applied",
+STATUSES = ("skipped", "review", "pending", "draft", "staged", "applied",
             "rejected", "interview", "offer", "withdrawn")
-ACTIVE = ("pending", "staged", "applied", "interview", "offer")
+ACTIVE = ("pending", "draft", "staged", "applied", "interview", "offer")
 
 
 def now() -> str:

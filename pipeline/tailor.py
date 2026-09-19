@@ -449,35 +449,105 @@ def tailor_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str, *,
 
     sidecar = {
         "job_id": job_id, "company": job["company"], "title": job["title"],
-        "apply_url": job["apply_url"], "base_cv": variant,
+        "apply_url": job["apply_url"], "base_cv": variant, "lang": lang,
         "fit_score": m["fit_score"], "ats_score": m["ats_score"],
         "edits": report, "verification": problems or "ok",
         "extraction_coverage": base.get("_source", {}).get("coverage"),
+        "base_sig": base.get("_source", {}).get("sig"),
         "pages": pages, "density_step": step, "section_order": stage,
+        "edited_by_hand": False,
     }
     out.with_suffix(".json").write_text(json.dumps(sidecar, ensure_ascii=False, indent=1))
+    # the editable document behind the PDF, so you can open and change it
+    out.with_suffix(".cv.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1))
 
     applied = sum(r["status"] == "applied" for r in report)
     with db.tx():
-        if problems:
-            db.upsert_application(job_id, status="pending", cv_filename=out.name,
-                                  notes=f"tailored CV failed verification: "
-                                        f"{'; '.join(problems)[:300]}")
-            db.event("tailor", job_id, ok=False, problems=problems)
-        else:
-            db.upsert_application(job_id, status="staged", cv_filename=out.name)
-            db.set_stage(job_id, "tailored")
-            db.event("tailor", job_id, ok=True, applied=applied,
-                     refused=len(report) - applied, file=str(out))
+        # A tailored CV is a draft until you have read it: nothing goes out
+        # that you have not seen.
+        db.upsert_application(
+            job_id, status="draft", cv_filename=out.name,
+            notes=("" if not problems else
+                   f"check before validating: {'; '.join(problems)[:300]}"))
+        db.set_stage(job_id, "tailored")
+        db.event("tailor", job_id, ok=not problems, applied=applied,
+                 refused=len(report) - applied, file=str(out), problems=problems)
 
     if pcfg.register_tailored and not problems:
         shutil.copy2(out, cfg.watch_dir / out.name)
-    log(f"  {'staged' if not problems else 'CHECK '} {job['company'][:16]:16s} "
-        f"{applied}/{len(report)} edits applied -> {out.relative_to(ROOT)}"
-        + (f"\n     problems: {'; '.join(problems)}" if problems else ""))
-    if problems:
-        raise TailorError("; ".join(problems))
+    # applications_dir is configurable and may live outside the project
+    shown = out.relative_to(ROOT) if out.is_relative_to(ROOT) else out
+    log(f"  draft  {job['company'][:16]:16s} "
+        f"{applied}/{len(report)} edits applied -> {shown}"
+        + (f"\n     to check: {'; '.join(problems)}" if problems else ""))
     return out
+
+
+# ------------------------------------------------ 6. manual review/editing --
+def cv_paths(pcfg: pc.PipelineConfig, db: DB, job_id: str) -> tuple[Path, Path, Path]:
+    """(pdf, sidecar .json, editable .cv.json) for a job's tailored CV."""
+    app = db.one("SELECT date, cv_filename FROM applications WHERE job_id=?", job_id)
+    if not app or not app["cv_filename"]:
+        raise TailorError(f"{job_id}: no tailored CV yet")
+    pdf = pcfg.applications_dir / (app["date"] or "") / app["cv_filename"]
+    if not pdf.is_file():
+        found = list(pcfg.applications_dir.rglob(app["cv_filename"]))
+        if not found:
+            raise TailorError(f"{job_id}: {app['cv_filename']} is missing on disk")
+        pdf = found[0]
+    return pdf, pdf.with_suffix(".json"), pdf.with_suffix(".cv.json")
+
+
+def load_cv(pcfg: pc.PipelineConfig, cfg: cr.Config, db: DB, job_id: str) -> dict:
+    """Everything the editor shows: the current document, the original it came
+    from, and the edit report."""
+    pdf, side, docf = cv_paths(pcfg, db, job_id)
+    meta = json.loads(side.read_text()) if side.is_file() else {}
+    doc = json.loads(docf.read_text()) if docf.is_file() else None
+    base = None
+    if meta.get("base_cv"):
+        try:
+            base = structured(cfg, pcfg, meta["base_cv"])     # cached, no model call
+        except Exception:
+            base = None
+    if doc is None and base is not None:
+        # tailored before the editable copy was kept: rebuild it the same way
+        m = db.one("SELECT suggested_edits FROM matches WHERE job_id=?", job_id)
+        doc, _ = apply_edits(base, json.loads(m["suggested_edits"] or "[]") if m else [])
+        doc = reorder(doc, meta.get("section_order", "graduate"))
+    return {"pdf": pdf, "meta": meta, "doc": doc, "base": base}
+
+
+def save_cv(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str,
+            doc: dict) -> dict:
+    """Your hand edits: re-render the PDF from the document you changed.
+
+    Unlike automatic tailoring, nothing here is refused — it is your CV. The
+    PDF is still read back, so you see if a page overflows or text is lost.
+    """
+    pdf, side, docf = cv_paths(pcfg, db, job_id)
+    meta = json.loads(side.read_text()) if side.is_file() else {}
+    lang = meta.get("lang", "fr")
+    pages, step = render_fitted(doc, lang, pdf, find_chrome(pcfg), max_pages=pcfg.max_pages)
+    problems = verify(pdf, doc, [], max_pages=pcfg.max_pages)
+    docf.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+    meta.update({"pages": pages, "density_step": step, "verification": problems or "ok",
+                 "edited_by_hand": True})
+    side.write_text(json.dumps(meta, ensure_ascii=False, indent=1))
+    with db.tx():
+        db.event("tailor", job_id, ok=not problems, edited_by_hand=True, pages=pages)
+    return {"pages": pages, "density_step": step, "problems": problems}
+
+
+def validate_cv(db: DB, job_id: str) -> None:
+    """You have read the CV and accept it: it becomes ready to submit."""
+    row = db.one("SELECT status FROM applications WHERE job_id=?", job_id)
+    if not row or row["status"] not in ("draft", "staged"):
+        raise TailorError(f"{job_id}: only a draft can be validated "
+                          f"(status is {row['status'] if row else 'missing'})")
+    with db.tx():
+        db.upsert_application(job_id, status="staged")
+        db.event("review", job_id, validated_cv=True)
 
 
 def pending_jobs(db: DB) -> list[str]:
