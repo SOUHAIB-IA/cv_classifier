@@ -9,7 +9,7 @@ let D = null, doc = null, base = null, TH = { auto: 70, review: 40 };
 let dirty = false, previewTimer = null, reverted = new Set();
 
 const $ = id => document.getElementById(id);
-const norm = s => String(s ?? "").replace(/[’‘]/g, "'").replace(/[–—]/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
+const norm = s => String(s ?? "").replace(/[’‘]/g, "'").replace(/[–-]/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
 const splitItems = s => String(s || "").split(/\s*[|,;•·]\s*/).map(x => x.trim()).filter(Boolean);
 const stripLabel = s => String(s || "").replace(/^[^:|]{2,40}:\s*/, "").trim();
 
@@ -232,7 +232,7 @@ $("editor").addEventListener("click", ev => {
 function revert(e) {
   const sug = stripLabel(e.suggested), cur = /^\(?absent\)?$/i.test(e.current || "") ? "" : e.current;
   const groups = (doc.sections || []).flatMap(s => s.groups || []);
-  // skills, case 1 — items were ADDED to a group ("added Kubernetes, Terraform"):
+  // skills, case 1 : items were ADDED to a group ("added Kubernetes, Terraform"):
   // take exactly those back out
   if (!cur && /^added /.test(e.reason || "")) {
     const added = new Set(e.reason.slice(6).split(/\s*,\s*/).map(norm));
@@ -240,7 +240,7 @@ function revert(e) {
     if (g) { g.items = g.items.filter(x => !added.has(norm(x))); return true; }
     return false;
   }
-  // skills, case 2 — a whole group was REPLACED by the suggested list: put the old list back
+  // skills, case 2 : a whole group was REPLACED by the suggested list: put the old list back
   const target = norm(splitItems(sug).join(", "));
   const g = groups.find(g => norm(g.items.join(", ")) === target);
   if (g && cur) { g.items = splitItems(stripLabel(cur)); return true; }
@@ -267,28 +267,83 @@ $("edits").addEventListener("click", async ev => {
   const list = D.cv?.meta?.edits || [];
   if (ev.target.dataset.revert !== undefined) {
     const i = +ev.target.dataset.revert;
-    if (revert(list[i])) { reverted.add(i); renderEdits(); renderEditor(); setDirty(true); schedulePreview(); toast("Modification annulée — pense à enregistrer."); }
+    if (revert(list[i])) { reverted.add(i); renderEdits(); renderEditor(); setDirty(true); schedulePreview(); toast("Modification annulée : pense à enregistrer."); }
     else toast("Texte introuvable : tu l'as sans doute déjà modifié à la main.");
   }
   if (ev.target.dataset.copy !== undefined) {
     await navigator.clipboard.writeText(list[+ev.target.dataset.copy].suggested);
-    toast("Suggestion copiée — colle-la où tu veux dans l'éditeur.");
+    toast("Suggestion copiée : colle-la où tu veux dans l'éditeur.");
   }
 });
 
 // ---------------------------------------------------------------- preview --
-function scalePreview() {
-  const w = $("pw").clientWidth, s = w / 794;
-  $("preview").style.transform = `scale(${s})`;
-  $("pw").style.height = (1123 * s) + "px";
+// zoom: null = fit the available width; otherwise a fixed scale.
+let zoom = null, pageH = 1123;
+const PAGE_W = 794, PAGE_H = 1123;              // A4 at 96 dpi
+const TOLERANCE = 24;                           // about one line of text, in px
+
+function fitScale() {
+  const pw = $("pw");
+  return Math.max(0.2, (pw.clientWidth - 24) / PAGE_W);   // 24 = wrapper padding
 }
+function scalePreview() {
+  const s = zoom ?? fitScale();
+  const ifr = $("preview");
+  ifr.style.height = pageH + "px";
+  ifr.style.transform = `scale(${s})`;
+  $("sizer").style.width = (PAGE_W * s) + "px";
+  $("sizer").style.height = (pageH * s) + "px";
+  // where page 1 ends, and page 2 if the content runs on
+  $("sizer").querySelectorAll(".pagebreak").forEach(n => n.remove());
+  // Screen and print lay text out a line apart at most, so a break is only
+  // drawn when the content clearly runs past the page; the saved PDF's real
+  // page count is shown next to the zoom and is the one that counts.
+  for (let p = 1; p * PAGE_H < pageH - TOLERANCE; p++) {
+    const d = document.createElement("div");
+    d.className = "pagebreak"; d.style.top = (p * PAGE_H * s) + "px";
+    d.innerHTML = `<span>≈ fin de la page ${p}</span>`;
+    $("sizer").appendChild(d);
+  }
+  $("z-lvl").textContent = zoom == null ? `ajusté ${Math.round(s * 100)} %` : `${Math.round(s * 100)} %`;
+}
+function setZoom(z) { zoom = z == null ? null : Math.min(3, Math.max(0.3, z)); scalePreview(); }
+$("z-in").onclick = () => setZoom((zoom ?? fitScale()) * 1.2);
+$("z-out").onclick = () => setZoom((zoom ?? fitScale()) / 1.2);
+$("z-fit").onclick = () => setZoom(null);
+
+function setExpanded(on) {
+  $("pv-card").classList.toggle("expanded", on);
+  $("b-expand").textContent = on ? "Réduire ✕" : "Agrandir ⤢";
+  document.body.style.overflow = on ? "hidden" : "";
+  document.body.classList.toggle("pv-open", on);
+  requestAnimationFrame(scalePreview);
+}
+$("b-expand").onclick = () => setExpanded(!$("pv-card").classList.contains("expanded"));
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("pv-card").classList.contains("expanded")) setExpanded(false);
+  if (e.target.matches("input, textarea, select")) return;
+  if (e.key === "+" || e.key === "=") $("z-in").click();
+  if (e.key === "-") $("z-out").click();
+});
+
+// the preview's real height, so a CV that runs past one page shows it
+$("preview").addEventListener("load", () => {
+  try {
+    const d = $("preview").contentDocument;
+    pageH = Math.max(PAGE_H, d.documentElement.scrollHeight);
+  } catch (e) { pageH = PAGE_H; }
+  scalePreview();
+});
+
 function schedulePreview(delay = 400) {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(async () => {
-    if (!doc) { $("preview").srcdoc = `<p style="font:14px sans-serif;color:#888;padding:20px">Pas encore de CV adapté.</p>`; scalePreview(); return; }
+    if (!doc) { $("preview").srcdoc = `<p style="font:14px sans-serif;color:#888;padding:20px">Pas encore de CV adapté.</p>`; return; }
     const density = D.cv?.meta?.density_step ?? 0;
     const html = await api(`/api/job/${JOB_ID}/preview`, { doc, lang: D.cv?.meta?.lang || "fr", density });
-    $("preview").srcdoc = html; scalePreview();
+    const wrap = $("pw"), top = wrap.scrollTop, left = wrap.scrollLeft;   // keep your place while editing
+    $("preview").srcdoc = html;
+    $("preview").addEventListener("load", () => { wrap.scrollTop = top; wrap.scrollLeft = left; }, { once: true });
   }, delay);
 }
 window.addEventListener("resize", scalePreview);
@@ -311,7 +366,7 @@ async function save() {
     if (r.doc) { doc = r.doc; renderEditor(); }
     D.cv.meta = { ...D.cv.meta, pages: r.pages, density_step: r.density_step, edited_by_hand: true };
     setDirty(false); schedulePreview(0);
-    toast(r.problems.length ? "PDF généré, à vérifier : " + r.problems.join(" ; ") : `PDF régénéré — ${r.pages} page(s), relu sans problème.`);
+    toast(r.problems.length ? "PDF généré, à vérifier : " + r.problems.join(" ; ") : `PDF régénéré : ${r.pages} page(s), relu sans problème.`);
   } catch (e) { toast("Échec : " + e.message); }
   $("b-save").disabled = false; $("b-save").textContent = "Enregistrer et régénérer le PDF";
 }
@@ -330,7 +385,7 @@ $("head").addEventListener("click", async ev => {
     } else if (act === "validate") {
       if (dirty) await save();
       await api(`/api/job/${JOB_ID}/status`, { action: "validate" });
-      toast("CV validé — prêt à être soumis.");
+      toast("CV validé : prêt à être soumis.");
     } else {
       const notes = ["interview", "rejected", "offer"].includes(act) ? (prompt("Note (optionnelle) :") || "") : "";
       await api(`/api/job/${JOB_ID}/status`, { action: act, notes });

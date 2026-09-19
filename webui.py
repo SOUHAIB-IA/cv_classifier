@@ -81,7 +81,7 @@ def state():
     ids = sorted({e["job_id"] for e in events if e["job_id"]})
     names = {}
     if ids:
-        names = {r["id"]: f"{r['company']} — {r['title']}" for r in db.q(
+        names = {r["id"]: f"{r['company']} · {r['title']}" for r in db.q(
             f"SELECT id, company, title FROM jobs WHERE id IN ({','.join('?' * len(ids))})",
             *ids)}
     for e in events:

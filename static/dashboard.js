@@ -18,7 +18,7 @@ function fillQueue(id, items, emptyMsg) {
 function evText(e) {
   const d = e.detail || {};
   switch (e.kind) {
-    case "source": return `${d.board || "manuel"} : ${d.fetched ?? ""} offres, ${d.new ?? 0} nouvelles${d.error ? " — " + d.error : ""}`;
+    case "source": return `${d.board || "manuel"} : ${d.fetched ?? ""} offres, ${d.new ?? 0} nouvelles${d.error ? " : " + d.error : ""}`;
     case "match": return `envoyée à cv-router (pré-filtre ${d.prefilter ?? "–"})`;
     case "route": return `décision <b>${d.decision}</b> · fit ${d.fit} · ATS ${d.ats}`;
     case "tailor": return d.edited_by_hand ? `CV modifié à la main · ${d.pages} page(s)`
@@ -47,7 +47,7 @@ async function refresh() {
     `<div class="card stat"><b>${f[k] ?? 0}</b><span>${l}</span></div>`).join("");
 
   fillQueue("draft", s.lists.draft.concat(s.lists.pending), "Aucun CV à relire.");
-  fillQueue("staged", s.lists.staged, "Rien de prêt — valide un CV d'abord.");
+  fillQueue("staged", s.lists.staged, "Rien de prêt : valide un CV d'abord.");
   fillQueue("review", s.lists.review, "File de revue vide.");
 
   document.getElementById("recent").innerHTML = s.lists.recent.map(r => `<tr>
@@ -72,7 +72,7 @@ async function refresh() {
       <td class="sub">${b.source}</td><td>${esc(b.board)}</td><td>${b.n_jobs ?? "–"}</td>
       <td class="sub">${ago(b.last_fetched)}${b.last_error ? ` <span style="color:var(--bad)">${esc(b.last_error)}</span>` : ""}</td></tr>`).join("");
 
-  document.getElementById("log").textContent = s.log || "—";
+  document.getElementById("log").textContent = s.log || "-";
   document.getElementById("live").classList.toggle("live", s.running);
   document.getElementById("livetxt").textContent = s.running ? "cycle en cours…" : "à l'arrêt";
   ["b-dry", "b-one", "b-fetch"].forEach(id => document.getElementById(id).disabled = s.running);
@@ -87,7 +87,7 @@ async function start(body, msg) {
 }
 
 document.getElementById("b-dry").onclick = () =>
-  start({ mode: "dry", fetch: false, max_matches: 5 }, "Cycle à blanc lancé — aucun appel modèle, rien n'est écrit.");
+  start({ mode: "dry", fetch: false, max_matches: 5 }, "Cycle à blanc lancé : aucun appel modèle, rien n'est écrit.");
 document.getElementById("b-one").onclick = () =>
   start({ mode: "real", fetch: false, max_matches: 1 }, "Évaluation de la meilleure candidate…");
 document.getElementById("b-fetch").onclick = () =>
@@ -115,7 +115,7 @@ async function addManual(evaluate) {
   try {
     const { job_id } = await api("/api/jobs", body);
     if (evaluate) {
-      toast("Offre ajoutée — évaluation en cours (≈ 2 min)…");
+      toast("Offre ajoutée : évaluation en cours (≈ 2 min)…");
       await api(`/api/job/${job_id}/evaluate`, {});
     }
     location.href = jobHref(job_id);
