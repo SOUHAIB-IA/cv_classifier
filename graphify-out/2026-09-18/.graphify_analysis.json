@@ -1,0 +1,317 @@
+{
+  "communities": {
+    "0": [
+      "cvrouter_cvrecord",
+      "cvrouter_cvrecord_compact",
+      "cvrouter_index",
+      "cvrouter_index_all_sigs",
+      "cvrouter_index_commit",
+      "cvrouter_index_find_by_sig",
+      "cvrouter_index_flock",
+      "cvrouter_index_init",
+      "cvrouter_index_load",
+      "cvrouter_index_read_disk",
+      "cvrouter_index_write_disk",
+      "cvrouter_load_config",
+      "cvrouter_load_config_abs",
+      "cvrouter_rationale_121",
+      "cvrouter_rationale_347",
+      "cvrouter_rationale_417",
+      "cvrouter_rationale_481",
+      "cvrouter_rationale_486",
+      "cvrouter_seenstore_init",
+      "cvrouter_slug_prefix",
+      "test_index_concurrency",
+      "test_index_concurrency_check",
+      "test_index_concurrency_main",
+      "test_index_concurrency_naive_writer",
+      "test_index_concurrency_rationale_2",
+      "test_index_concurrency_rationale_28",
+      "test_index_concurrency_rationale_44",
+      "test_index_concurrency_run",
+      "test_index_concurrency_writer"
+    ],
+    "1": [
+      "filesystemeventhandler",
+      "watcher",
+      "watcher_handler",
+      "watcher_handler_init",
+      "watcher_handler_on_created",
+      "watcher_handler_on_moved",
+      "watcher_main",
+      "watcher_py_path",
+      "watcher_rationale_2",
+      "watcher_rationale_51",
+      "watcher_rationale_55",
+      "watcher_rationale_62",
+      "watcher_router",
+      "watcher_router_already_done",
+      "watcher_router_file_duplicate",
+      "watcher_router_fingerprint",
+      "watcher_router_handle",
+      "watcher_router_handle_11c564",
+      "watcher_router_init",
+      "watcher_router_remember",
+      "watcher_router_settled",
+      "watcher_router_skip",
+      "watcher_router_sweep"
+    ],
+    "2": [
+      "test_routing",
+      "test_routing_check",
+      "test_routing_main",
+      "test_routing_main_count",
+      "test_routing_main_count2",
+      "test_routing_main_counting",
+      "test_routing_main_spent",
+      "test_routing_rationale_2",
+      "testkit",
+      "testkit_make_pdf",
+      "testkit_py_path",
+      "testkit_rationale_1",
+      "testkit_rationale_27",
+      "testkit_rationale_60",
+      "testkit_temp_config"
+    ],
+    "3": [
+      "cvrouter_headline_of",
+      "cvrouter_junk_re",
+      "cvrouter_rationale_308",
+      "indexer",
+      "indexer_branch_and_specialty",
+      "indexer_build_record",
+      "indexer_main",
+      "indexer_main_ask",
+      "indexer_main_summarise_batch",
+      "indexer_main_summarise_one",
+      "indexer_py_path",
+      "indexer_rationale_2",
+      "indexer_rationale_64",
+      "pattern"
+    ],
+    "4": [
+      "get",
+      "portal",
+      "portal_analyse",
+      "portal_api_cvs",
+      "portal_api_match",
+      "portal_home",
+      "portal_index",
+      "portal_match",
+      "portal_rationale_148",
+      "portal_rationale_2",
+      "portal_rationale_79",
+      "post",
+      "request"
+    ],
+    "5": [
+      "cvrouter_aierror",
+      "cvrouter_ask_api",
+      "cvrouter_ask_cli",
+      "cvrouter_ask_json",
+      "cvrouter_config",
+      "cvrouter_config_api_key",
+      "cvrouter_indexlocktimeout",
+      "cvrouter_rationale_609",
+      "runtimeerror"
+    ],
+    "6": [
+      "cvrouter_destination",
+      "cvrouter_find_claude_bin",
+      "cvrouter_index_lockfile",
+      "cvrouter_index_pdf_paths",
+      "cvrouter_py_path",
+      "cvrouter_rationale_538",
+      "cvrouter_rationale_680",
+      "cvrouter_unique_name",
+      "cvrouter_vkey"
+    ],
+    "7": [
+      "cvrouter",
+      "cvrouter_ascii_fold",
+      "cvrouter_prune_text_cache",
+      "cvrouter_rationale_1",
+      "cvrouter_rationale_269",
+      "cvrouter_setup_logging",
+      "cvrouter_slug",
+      "logger"
+    ],
+    "8": [
+      "cvrouter_rationale_356",
+      "cvrouter_seenstore",
+      "cvrouter_seenstore_forget",
+      "cvrouter_seenstore_load",
+      "cvrouter_seenstore_remember",
+      "cvrouter_seenstore_save",
+      "cvrouter_seenstore_verdict"
+    ],
+    "9": [
+      "cvrouter_classify_pdf",
+      "cvrouter_content_sig",
+      "cvrouter_pdf_text",
+      "cvrouter_rationale_222",
+      "cvrouter_rationale_284",
+      "cvrouter_rationale_655"
+    ],
+    "10": [
+      "cvrouter_cache_key",
+      "cvrouter_pdf_text_cached",
+      "cvrouter_rationale_232",
+      "cvrouter_rationale_240"
+    ],
+    "11": [
+      "cvrouter_notify",
+      "cvrouter_rationale_187"
+    ],
+    "12": [
+      "install",
+      "install_sh__entry"
+    ]
+  },
+  "cohesion": {
+    "0": 0.1206896551724138,
+    "1": 0.15019762845849802,
+    "2": 0.17142857142857143,
+    "3": 0.21978021978021978,
+    "4": 0.2692307692307692,
+    "5": 0.3333333333333333,
+    "6": 0.2777777777777778,
+    "7": 0.2857142857142857,
+    "8": 0.38095238095238093,
+    "9": 0.3333333333333333,
+    "10": 0.5,
+    "11": 1.0,
+    "12": 1.0
+  },
+  "gods": [
+    {
+      "id": "cvrouter_index",
+      "label": "Index",
+      "degree": 19
+    },
+    {
+      "id": "cvrouter_config",
+      "label": "Config",
+      "degree": 17
+    },
+    {
+      "id": "watcher_router",
+      "label": "Router",
+      "degree": 13
+    },
+    {
+      "id": "cvrouter_load_config",
+      "label": "load_config()",
+      "degree": 12
+    },
+    {
+      "id": "indexer_main",
+      "label": "main()",
+      "degree": 11
+    },
+    {
+      "id": "test_routing_main",
+      "label": "main()",
+      "degree": 10
+    },
+    {
+      "id": "cvrouter_cvrecord",
+      "label": "CVRecord",
+      "degree": 9
+    },
+    {
+      "id": "cvrouter_pdf_text_cached",
+      "label": "pdf_text_cached()",
+      "degree": 9
+    },
+    {
+      "id": "indexer_build_record",
+      "label": "build_record()",
+      "degree": 9
+    },
+    {
+      "id": "cvrouter_seenstore",
+      "label": "SeenStore",
+      "degree": 8
+    }
+  ],
+  "surprises": [
+    {
+      "source": "build_record()",
+      "target": "CVRecord",
+      "source_files": [
+        "indexer.py",
+        "cvrouter.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "main()",
+      "target": "Index",
+      "source_files": [
+        "indexer.py",
+        "cvrouter.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "_index()",
+      "target": "Index",
+      "source_files": [
+        "portal.py",
+        "cvrouter.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "main()",
+      "target": "Index",
+      "source_files": [
+        "test_routing.py",
+        "cvrouter.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "analyse()",
+      "target": "AIError",
+      "source_files": [
+        "portal.py",
+        "cvrouter.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `Index` connect `Index` to `main`, `main`, `portal.py`, `Path`, `cvrouter.py`?",
+      "why": "High betweenness centrality (0.179) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `Config` connect `Config` to `Index`, `Router`, `main`, `main`, `Path`, `cvrouter.py`, `classify_pdf`, `pdf_text_cached`, `notify`?",
+      "why": "High betweenness centrality (0.101) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `install.sh script` to the rest of the system?",
+      "why": "1 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Index` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.1206896551724138 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

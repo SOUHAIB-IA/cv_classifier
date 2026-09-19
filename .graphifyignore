@@ -1,0 +1,17 @@
+node_modules/
+.venv/
+venv/
+env/
+*env/
+__pycache__/
+dist/
+build/
+target/
+models/
+chroma_db/
+vectorstore/
+*.bin
+*.safetensors
+*.pkl
+*.sqlite3
+graphify-out/
