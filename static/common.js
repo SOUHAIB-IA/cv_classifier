@@ -16,8 +16,15 @@ async function api(path, body, method) {
   return data;
 }
 
+// Evaluations stored before the model was told to avoid it still carry the em
+// dash; strip it on display too, so it never shows up anywhere.
+function noDash(s) {
+  return String(s ?? "").replace(/\s+[—―]\s+/g, ", ").replace(/[—―]/g, "-");
+}
+
 function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  s = noDash(s);
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
 function fitClass(f, th) {

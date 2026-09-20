@@ -50,6 +50,24 @@ async function load() {
   setDirty(false);
 }
 
+// Where this job stands, and whose move it is now.
+function stepper(st, hasMatch, hasCv) {
+  const order = ["new", "evaluated", "cv", "validated", "sent"];
+  let at = "new";
+  if (hasMatch) at = "evaluated";
+  if (hasCv || st === "draft") at = "cv";
+  if (st === "staged") at = "validated";
+  if (["applied", "interview", "rejected", "offer"].includes(st)) at = "sent";
+  const labels = [["new", "Ajoutée", "auto"], ["evaluated", "Évaluée", "auto"],
+                  ["cv", "CV préparé", "auto"], ["validated", "Validé par toi", "toi"],
+                  ["sent", "Envoyée par toi", "toi"]];
+  const idx = order.indexOf(at);
+  return `<div class="steps">` + labels.map(([k, l, by], i) => {
+    const cls = i < idx ? "done" : i === idx ? "now" : "";
+    return `${i ? '<span class="sep">→</span>' : ""}<span class="s ${cls}">${l}<span class="sub"> · ${by}</span></span>`;
+  }).join("") + `</div>`;
+}
+
 function renderHead() {
   const j = D.job, a = D.app, m = D.match;
   const st = a ? a.status : "new";
@@ -64,7 +82,9 @@ function renderHead() {
                  `<button data-act="tailor">Refaire depuis l'original</button>`,
                  `<button class="danger" data-act="skip">Écarter l'offre</button>`);
   } else if (st === "staged") {
-    actions.push(`<button class="primary" data-act="applied">J'ai envoyé la candidature</button>`,
+    if (D.tier === 1) actions.push(`<button class="primary" data-act="prefill">Pré-remplir le formulaire</button>`);
+    else actions.push(`<a class="btn primary" target="_blank" rel="noopener" href="${esc(j.apply_url || "#")}">Ouvrir l'annonce et postuler</a>`);
+    actions.push(`<button data-act="applied">J'ai envoyé la candidature</button>`,
                  `<button class="danger" data-act="withdrawn">Abandonner</button>`);
   } else if (["applied", "interview", "rejected", "offer"].includes(st)) {
     actions.push(`<button data-act="interview">Entretien</button>`, `<button data-act="rejected">Refus</button>`,
@@ -78,9 +98,12 @@ function renderHead() {
         ${url ? ` · <a href="${esc(url)}" target="_blank" rel="noopener">voir l'annonce ↗</a>` : ""}</div>
       <div style="margin-top:6px"><span class="tag ${st}">${STATUS_FR[st] || st}</span>
         ${a && a.cv_variant ? `<span class="sub"> · CV de base : ${esc(a.cv_variant)}</span>` : ""}</div>
+      ${stepper(st, !!m, !!D.cv)}
       <div class="actions">${actions.join("")}</div>
-      ${st === "staged" ? `<div class="sub" style="margin-top:8px">Pour pré-remplir le formulaire (tu cliques « envoyer » toi-même) :
-        <code>python -m pipeline.submit ${esc(JOB_ID)}</code></div>` : ""}
+      ${st === "staged" ? `<div class="sub" style="margin-top:8px">${D.tier === 1
+          ? "Le formulaire s'ouvre dans une fenêtre, rempli avec tes coordonnées et ton CV. Tu relis, tu réponds au reste, et c'est toi qui cliques sur Envoyer."
+          : "Cette plateforme n'est pas automatisée (LinkedIn, Indeed). Ouvre l'annonce et postule avec le CV préparé."}</div>` : ""}
+      <div id="prefill"></div>
     </div>
     <div class="scores">
       <div class="score"><b class="fit ${fitClass(m?.fit_score, TH)}">${m?.fit_score ?? "–"}</b><span>fit</span></div>
@@ -357,6 +380,45 @@ function setDirty(v) {
 }
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
+// ------------------------------------------------------------- pre-filling --
+// The form opens in a real window, filled with your details and CV, and stops
+// there. Nothing clicks submit: that is yours.
+let prefillTimer = null;
+
+function renderPrefill(st) {
+  const box = $("prefill");
+  if (!st || st.state === "idle") { box.innerHTML = ""; return; }
+  if (st.state === "running" && !st.report) {
+    box.innerHTML = `<div class="panel">Ouverture du formulaire et remplissage…</div>`;
+    return;
+  }
+  if (st.state === "error") {
+    box.innerHTML = `<div class="panel"><h3>Le formulaire n'a pas pu être ouvert</h3>${esc(st.error || "")}</div>`;
+    return;
+  }
+  const r = st.report || {};
+  box.innerHTML = `<div class="panel">
+    <h3>${st.state === "closed" ? "Fenêtre fermée" : "Formulaire ouvert dans une fenêtre"}</h3>
+    <div>Champs remplis : <b>${(r.filled || []).join(", ") || "aucun"}</b></div>
+    <div>CV : <b>${r.resume ? "joint" : "NON joint, attache-le toi-même"}</b></div>
+    ${r.captcha ? `<div><b>Un CAPTCHA est présent</b> : à toi de le résoudre, rien ici n'y touche.</div>` : ""}
+    ${(r.required_left || []).length ? `<div style="margin-top:6px">Il reste à répondre, toi seul peux le faire :
+      <ul>${r.required_left.slice(0, 12).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+    <div style="margin-top:8px"><b>Relis, complète, puis clique sur « Envoyer » dans la fenêtre.</b></div>
+    <div class="actions" style="margin-top:8px">
+      <button class="primary" data-act="applied">C'est envoyé</button>
+      <button data-act="prefill">Rouvrir le formulaire</button>
+    </div></div>`;
+}
+
+async function pollPrefill() {
+  clearTimeout(prefillTimer);
+  let st;
+  try { st = await api(`/api/job/${JOB_ID}/prefill`); } catch (e) { return; }
+  renderPrefill(st);
+  if (st.state === "running" || st.state === "filled") prefillTimer = setTimeout(pollPrefill, 2000);
+}
+
 // ---------------------------------------------------------------- actions --
 async function save() {
   $("b-save").disabled = true; $("b-save").textContent = "Génération du PDF…";
@@ -382,6 +444,13 @@ $("head").addEventListener("click", async ev => {
       if (act === "tailor" && D.cv && !confirm("Repartir de ton CV d'origine avec les modifications de cv-router ? Tes retouches manuelles seront perdues.")) { b.disabled = false; return; }
       if (act === "approve-tailor") await api(`/api/job/${JOB_ID}/status`, { action: "approve" });
       b.textContent = "Préparation du CV…"; await api(`/api/job/${JOB_ID}/tailor`, {});
+    } else if (act === "prefill") {
+      b.textContent = "Ouverture…";
+      const r = await api(`/api/job/${JOB_ID}/prefill`, {});
+      if (r.profile_set === false) toast("profile.toml est vide : seul le CV sera joint.");
+      pollPrefill();
+      b.disabled = false; b.textContent = label;
+      return;
     } else if (act === "validate") {
       if (dirty) await save();
       await api(`/api/job/${JOB_ID}/status`, { action: "validate" });
@@ -394,4 +463,5 @@ $("head").addEventListener("click", async ev => {
   } catch (e) { toast("Erreur : " + e.message); b.disabled = false; b.textContent = label; }
 });
 
+pollPrefill();
 load().catch(e => { $("head").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; });

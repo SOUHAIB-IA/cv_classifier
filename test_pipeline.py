@@ -460,6 +460,17 @@ def main():
                   r.status_code == 200 and r.json()["status"] == "staged")
             r = client.post(f"/api/job/{jid}/status", headers=H, json={"action": "applied"})
             check("outcomes can be recorded from the UI", r.json()["status"] == "applied")
+
+            # a {path} converter swallows slashes, so a sub-route declared after
+            # the catch-all would be read as a job id and answered 404
+            r = client.get(f"/api/job/{jid}/prefill")
+            check("the pre-fill state route resolves, not the catch-all",
+                  r.status_code == 200 and r.json()["state"] == "idle", r.text[:80])
+            check("the job page says which tier the employer's form is",
+                  client.get(f"/api/job/{jid}").json()["tier"] in (1, 2))
+            r = client.post(f"/api/job/{jid}/prefill", headers=H)
+            check("pre-filling is refused where it is not automated (LinkedIn, Indeed)",
+                  r.status_code == 400, r.text[:80])
         else:
             print("  skip  UI tailoring checks (no Chrome)")
     finally:

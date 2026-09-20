@@ -39,12 +39,40 @@ async function refresh() {
   document.getElementById("th-rev").textContent = TH.review;
   document.getElementById("budget").textContent = `${s.budget.used} / ${s.budget.total}`;
 
-  const f = s.funnel;
+  const f = s.funnel, L = s.lists;
   const stats = [["sourced", "offres collectées"], ["candidates", "passées au pré-filtre"],
                  ["evaluated by model", "évaluées par cv-router"], ["auto", "fit ≥ " + TH.auto],
                  ["review", "revue"], ["applied", "envoyées"]];
   document.getElementById("funnel").innerHTML = stats.map(([k, l]) =>
     `<div class="card stat"><b>${f[k] ?? 0}</b><span>${l}</span></div>`).join("");
+
+  // the journey of one job, and who moves it along at each step
+  const flow = [
+    { n: f["sourced"] ?? 0, nm: "Collectées", by: "auto" },
+    { n: f["candidates"] ?? 0, nm: "Retenues au pré-filtre", by: "auto" },
+    { n: f["evaluated by model"] ?? 0, nm: "Évaluées par cv-router", by: "auto" },
+    { n: L.review.length, nm: "À trancher", by: "toi", you: true },
+    { n: L.draft.length + L.pending.length, nm: "CV à relire", by: "toi", you: true },
+    { n: L.staged.length, nm: "À envoyer", by: "toi", you: true },
+    { n: f["applied"] ?? 0, nm: "Envoyées", by: "toi" },
+  ];
+  document.getElementById("flow").innerHTML = flow.map((x, i) =>
+    `${i ? '<span class="arr">→</span>' : ""}
+     <div class="st ${x.you ? "you" : ""} ${x.you && !x.n ? "none" : ""}">
+       <b>${x.n}</b><span class="nm">${x.nm}</span><span class="by">${x.by}</span></div>`).join("");
+
+  // what is waiting for you, in the order it should be done
+  const todo = [
+    { n: L.draft.length + L.pending.length, t: "CV à relire et valider",
+      s: "Ouvre, lis, corrige si besoin, puis valide.", href: "#q-draft" },
+    { n: L.staged.length, t: "Candidatures à envoyer",
+      s: "Le formulaire est pré-rempli ; tu cliques sur Envoyer.", href: "#q-staged" },
+    { n: L.review.length, t: "Offres à trancher",
+      s: "Fit moyen : à toi de dire si ça vaut le coup.", href: "#q-review" },
+  ].filter(x => x.n);
+  document.getElementById("todo").innerHTML = todo.length ? todo.map(x =>
+    `<a class="hot" href="${x.href}"><b>${x.n}</b><span class="t">${x.t}<span>${x.s}</span></span>→</a>`).join("")
+    : `<div class="done">Rien ne t'attend. Le pipeline continue de chercher.</div>`;
 
   fillQueue("draft", s.lists.draft.concat(s.lists.pending), "Aucun CV à relire.");
   fillQueue("staged", s.lists.staged, "Rien de prêt : valide un CV d'abord.");

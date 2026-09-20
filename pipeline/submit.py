@@ -155,20 +155,61 @@ def staged(db: DB) -> list:
                 "ORDER BY a.fit_score DESC, a.date ASC")
 
 
+def cv_file(pcfg: pc.PipelineConfig, app) -> Path:
+    """The tailored CV to attach."""
+    cv = pcfg.applications_dir / (app["date"] or "") / (app["cv_filename"] or "")
+    if not cv.is_file():
+        found = list(pcfg.applications_dir.rglob(app["cv_filename"] or "__none__"))
+        cv = found[0] if found else cv
+    if not cv.is_file():
+        raise FileNotFoundError(f"no tailored CV on file for {app['job_id']}")
+    return cv
+
+
+def open_and_fill(pcfg: pc.PipelineConfig, apply_url: str, ident: dict, cv: Path, *,
+                  on_filled=None) -> dict:
+    """Open the form in a real window, fill what is safe to fill, and leave it
+    open for you. Returns the report; on_filled gets it as soon as the fields
+    are in, before the wait, so a caller can show it while you read the form.
+
+    This function does not submit. There is no click anywhere in this module.
+    """
+    from playwright.sync_api import sync_playwright
+    user_dir = ROOT / "data" / "browser-profile"      # separate from your own Chrome
+    rep: dict = {}
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            str(user_dir), channel=pcfg.submit_channel, headless=False,
+            viewport={"width": 1280, "height": 900})
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page.goto(apply_url, wait_until="domcontentloaded", timeout=60_000)
+        page.wait_for_timeout(2500)                  # let the form render
+        rep = fill_form(page, ident, cv)
+        if on_filled:
+            on_filled(rep)
+        try:
+            page.wait_for_event("close", timeout=0)  # you close it when done
+        except Exception:
+            pass
+        try:
+            ctx.close()
+        except Exception:
+            pass
+    return rep
+
+
 def submit(db: DB, pcfg: pc.PipelineConfig, job_id: str, *, ask=input) -> str:
     job = db.one("SELECT * FROM jobs WHERE id=?", job_id)
     app = db.one("SELECT * FROM applications WHERE job_id=?", job_id)
     m = db.one("SELECT * FROM matches WHERE job_id=?", job_id)
     if not job or not app:
         raise SystemExit(f"unknown job {job_id}")
-    cv = pcfg.applications_dir / (app["date"] or "") / (app["cv_filename"] or "")
-    if not cv.is_file():
-        found = list(pcfg.applications_dir.rglob(app["cv_filename"] or "__none__"))
-        cv = found[0] if found else cv
-    if not cv.is_file():
-        raise SystemExit(f"no tailored CV on file for {job_id} — run pipeline.tailor")
+    try:
+        cv = cv_file(pcfg, app)
+    except FileNotFoundError as e:
+        raise SystemExit(f"{e}: run pipeline.tailor")
 
-    print(f"\n{job['company']} — {job['title']}")
+    print(f"\n{job['company']}, {job['title']}")
     print(f"  fit {app['fit_score']}   CV {cv.name}")
     raw = json.loads(m["raw"]) if m and m["raw"] else {}
 
@@ -183,40 +224,24 @@ def submit(db: DB, pcfg: pc.PipelineConfig, job_id: str, *, ask=input) -> str:
     profile = pc.load_profile()
     ident = _identity(profile, (app["account"] or job["language"] or "en").lower())
     if not ident:
-        print("  profile.toml is missing or empty — only the CV will be attached.")
+        print("  profile.toml is missing or empty: only the CV will be attached.")
 
-    from playwright.sync_api import sync_playwright
-    user_dir = ROOT / "data" / "browser-profile"      # separate from your own Chrome
-    with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(
-            str(user_dir), channel=pcfg.submit_channel, headless=False,
-            viewport={"width": 1280, "height": 900})
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto(job["apply_url"], wait_until="domcontentloaded", timeout=60_000)
-        page.wait_for_timeout(2500)                  # let the form render
-        rep = fill_form(page, ident, cv)
+    def show(rep):
         db.event("submit", job_id, stage="prefilled", filled=rep["filled"],
                  resume=rep["resume"], captcha=rep["captcha"],
                  required_left=len(rep["required_left"]))
-
         print(f"\n  filled   : {', '.join(rep['filled']) or 'nothing'}")
-        print(f"  CV       : {'attached' if rep['resume'] else 'NOT attached — attach it yourself'}")
+        print(f"  CV       : {'attached' if rep['resume'] else 'NOT attached, attach it yourself'}")
         if rep["required_left"]:
             print("  still required, for you to answer:")
             for r in rep["required_left"]:
                 print(f"    - {r}")
         if rep["captcha"]:
-            print("  a CAPTCHA is on the page — solve it yourself; nothing here touches it.")
+            print("  a CAPTCHA is on the page: solve it yourself, nothing here touches it.")
         print("\n  Review everything, then click submit in the browser yourself.")
         print("  Close the browser window when you are done.")
-        try:
-            page.wait_for_event("close", timeout=0)
-        except Exception:
-            pass
-        try:
-            ctx.close()
-        except Exception:
-            pass
+
+    open_and_fill(pcfg, job["apply_url"], ident, cv, on_filled=show)
     return _record(db, job_id, ask)
 
 

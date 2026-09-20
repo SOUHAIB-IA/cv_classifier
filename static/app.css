@@ -89,3 +89,41 @@ details > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .chip { font-size: 12px; padding: 2px 8px; border-radius: 20px; }
 .chip.ok { background: var(--accent-soft); color: var(--accent); }
 .chip.no { background: var(--bad-soft); color: var(--bad); }
+
+/* ---------------------------------------------------- flow and next steps -- */
+/* Who does what is the thing people get wrong about this tool, so every stage
+   says it: "auto" for what runs on its own, "toi" for what waits for you. */
+.flow { display: flex; gap: 6px; align-items: stretch; overflow-x: auto; padding-bottom: 4px; }
+.flow .st { flex: 1 1 0; min-width: 118px; background: var(--card); border: 1px solid var(--line);
+            border-radius: 9px; padding: 10px 11px; text-decoration: none; color: inherit;
+            display: flex; flex-direction: column; gap: 3px; position: relative; }
+.flow .st.you { border-color: var(--warn); background: var(--warn-soft); }
+.flow .st.you.none { border-color: var(--line); background: var(--card); }
+.flow .st b { font-size: 21px; line-height: 1; font-variant-numeric: tabular-nums; }
+.flow .st .nm { font-size: 12px; font-weight: 600; }
+.flow .st .by { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.flow .st.you .by { color: var(--warn); }
+.flow .arr { align-self: center; color: var(--muted); font-size: 15px; flex: none; }
+.todo { display: flex; flex-direction: column; gap: 8px; }
+.todo a { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 8px;
+          border: 1px solid var(--line); text-decoration: none; color: inherit; }
+.todo a.hot { border-color: var(--warn); background: var(--warn-soft); }
+.todo a b { font-size: 18px; min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
+.todo a .t { flex: 1; }
+.todo a .t span { display: block; font-size: 12px; color: var(--muted); }
+.todo .done { color: var(--muted); font-size: 13px; padding: 4px 2px; }
+/* stepper on a job page */
+.steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 10px 0 2px; }
+.steps .s { font-size: 12px; padding: 4px 9px; border-radius: 20px; border: 1px solid var(--line);
+            color: var(--muted); white-space: nowrap; }
+.steps .s.done { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.steps .s.now { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); font-weight: 600; }
+.steps .sep { color: var(--line); }
+.panel { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 9px;
+         padding: 12px 14px; margin-top: 10px; font-size: 13px; }
+.panel h3 { margin: 0 0 6px; font-size: 13px; }
+.panel ul { margin: 6px 0 0 18px; padding: 0; }
+.how { font-size: 13px; color: var(--muted); }
+.how ol { margin: 8px 0 0 18px; padding: 0; }
+.how li { margin-bottom: 5px; }
+.how b { color: var(--ink); }

@@ -16,10 +16,36 @@
 </nav>
 <main>
   <h1>Pipeline de candidatures</h1>
-  <div class="sub">Rafraîchi automatiquement. Chaque CV adapté est un brouillon tant que tu ne l'as pas relu et validé.</div>
+  <div class="sub">Le système trouve, trie et prépare. <b>C'est toi qui envoies</b> : rien n'est jamais soumis automatiquement.</div>
+
+  <!-- flow -->
+  <h2 style="margin-top:18px">Le parcours d'une offre</h2>
+  <div class="flow" id="flow"></div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h2>À faire maintenant</h2>
+      <div class="todo" id="todo"></div>
+    </div>
+    <div class="card">
+      <h2>Comment ça marche</h2>
+      <div class="how">
+        <ol>
+          <li>Le pipeline <b>collecte</b> les offres des entreprises suivies, toutes les 45 minutes.</li>
+          <li>Un <b>pré-filtre gratuit</b> écarte ce qui ne correspond pas : intitulé, lieu, années demandées, autorisation de travail.</li>
+          <li>cv-router <b>évalue</b> les meilleures : il choisit ton CV le plus adapté, donne un score de fit et un score ATS, et liste les modifications à faire.</li>
+          <li>Pour un fit élevé, le CV est <b>adapté automatiquement</b>, puis il t'attend en brouillon.</li>
+          <li>Tu le <b>relis, modifies, valides</b>.</li>
+          <li>Le formulaire de l'employeur est <b>pré-rempli</b> dans une fenêtre, et <b>tu cliques sur Envoyer</b>.</li>
+        </ol>
+        <p style="margin-top:10px">Ce que le système ne fait jamais : soumettre une candidature, répondre à une question sur ton autorisation de travail ou ton salaire, ni toucher à un CAPTCHA.</p>
+      </div>
+    </div>
+  </div>
 
   <!-- funnel -->
-  <div class="grid g4" style="margin-top:18px" id="funnel"></div>
+  <h2 style="margin-top:20px">Chiffres</h2>
+  <div class="grid g4" id="funnel"></div>
 
   <div class="grid g2" style="margin-top:16px">
     <!-- controls -->
@@ -59,9 +85,9 @@
 
   <!-- queues -->
   <div class="grid g3" style="margin-top:16px">
-    <div class="card"><h2>CV à relire <span class="tag draft" id="n-draft">0</span></h2><div class="list" id="q-draft"></div></div>
-    <div class="card"><h2>Prêtes à soumettre <span class="tag staged" id="n-staged">0</span></h2><div class="list" id="q-staged"></div></div>
-    <div class="card"><h2>En revue (fit moyen) <span class="tag review" id="n-review">0</span></h2><div class="list" id="q-review"></div></div>
+    <div class="card" id="q-draft-card"><h2>CV à relire <span class="tag draft" id="n-draft">0</span></h2><div class="list" id="q-draft" style="scroll-margin-top:80px"></div></div>
+    <div class="card"><h2>Prêtes à soumettre <span class="tag staged" id="n-staged">0</span></h2><div class="list" id="q-staged" style="scroll-margin-top:80px"></div></div>
+    <div class="card"><h2>En revue (fit moyen) <span class="tag review" id="n-review">0</span></h2><div class="list" id="q-review" style="scroll-margin-top:80px"></div></div>
   </div>
 
   <div class="grid g2" style="margin-top:16px">

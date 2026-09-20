@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -26,6 +27,7 @@ from pipeline import config as pc
 from pipeline import fetch as F
 from pipeline import orchestrate as O
 from pipeline import tailor as T
+from pipeline import submit as SUB
 from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 
@@ -34,6 +36,8 @@ templates = Jinja2Templates(directory=str(HERE / "templates"))
 router = APIRouter()
 RUN_LOG = HERE / "data" / "last_run.log"
 _run: dict = {"proc": None}
+# One pre-fill at a time, per job: the browser window is the shared resource.
+_prefill: dict = {}
 
 
 def _ctx():
@@ -166,6 +170,14 @@ def job_page(request: Request, job_id: str):
     return templates.TemplateResponse(request, "job.html", {"job_id": job_id})
 
 
+# Declared before the catch-all below: a {path} converter swallows slashes, so
+# "/api/job/<id>/prefill" would otherwise be read as a job id ending in
+# "/prefill" and answered with 404.
+@router.get("/api/job/{job_id:path}/prefill")
+def job_prefill_state(job_id: str):
+    return _prefill.get(job_id) or {"state": "idle"}
+
+
 @router.get("/api/job/{job_id:path}")
 def job_data(job_id: str):
     pcfg, cfg, db = _ctx()
@@ -175,6 +187,7 @@ def job_data(job_id: str):
     m = db.one("SELECT * FROM matches WHERE job_id=?", job_id)
     app = db.one("SELECT * FROM applications WHERE job_id=?", job_id)
     out = {"job": dict(job), "match": None, "app": dict(app) if app else None, "cv": None,
+           "tier": SUB.tier(job["apply_url"] or "", pcfg.submit_hosts),
            "thresholds": {"auto": pcfg.threshold_auto, "review": pcfg.threshold_review},
            "events": [dict(r) for r in db.q(
                "SELECT ts, kind, detail FROM events WHERE job_id=? ORDER BY rowid", job_id)]}
@@ -242,6 +255,49 @@ def job_save_cv(job_id: str, payload: dict, x_cv_router: str | None = Header(def
         return T.save_cv(db, pcfg, cfg, job_id, doc)
     except T.TailorError as e:
         raise HTTPException(400, str(e))
+
+
+@router.post("/api/job/{job_id:path}/prefill")
+def job_prefill(job_id: str, x_cv_router: str | None = Header(default=None)):
+    """Open the employer's form in a real window and fill your details and CV.
+
+    It stops there: the window stays open for you to read it, answer what is
+    left and click submit. Nothing here ever clicks.
+    """
+    _guard(x_cv_router)
+    pcfg, cfg, db = _ctx()
+    job = db.one("SELECT * FROM jobs WHERE id=?", job_id)
+    app = db.one("SELECT * FROM applications WHERE job_id=?", job_id)
+    if not job or not app:
+        raise HTTPException(404, "unknown job")
+    if SUB.tier(job["apply_url"], pcfg.submit_hosts) == 2:
+        raise HTTPException(400, "this platform is not automated: apply by hand")
+    try:
+        cv = SUB.cv_file(pcfg, app)
+    except FileNotFoundError as e:
+        raise HTTPException(400, str(e))
+    st = _prefill.get(job_id)
+    if st and st.get("state") == "running":
+        return {"state": "running"}
+
+    ident = SUB._identity(pc.load_profile(), (app["account"] or job["language"] or "en").lower())
+    _prefill[job_id] = {"state": "running", "report": None, "error": None}
+
+    def work():
+        def filled(rep):
+            _prefill[job_id] = {"state": "filled", "report": rep, "error": None}
+            DB(pcfg.db).event("submit", job_id, stage="prefilled", filled=rep["filled"],
+                              resume=rep["resume"], captcha=rep["captcha"],
+                              required_left=len(rep["required_left"]))
+        try:
+            SUB.open_and_fill(pcfg, job["apply_url"], ident, cv, on_filled=filled)
+            cur = _prefill.get(job_id) or {}
+            _prefill[job_id] = {**cur, "state": "closed"}
+        except Exception as e:
+            _prefill[job_id] = {"state": "error", "report": None, "error": str(e)[:300]}
+
+    threading.Thread(target=work, daemon=True).start()
+    return {"state": "running", "profile_set": bool(ident)}
 
 
 @router.post("/api/job/{job_id:path}/status")
