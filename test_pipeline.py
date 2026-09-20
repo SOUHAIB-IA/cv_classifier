@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -23,6 +24,7 @@ from pipeline import config as pc
 from pipeline import orchestrate as O
 from pipeline import sources as S
 from pipeline import submit as SUB
+from pipeline import autoapply as AA
 from pipeline import tailor as T
 from pipeline import tracker as TR
 from pipeline.db import DB, dedupe_key
@@ -267,8 +269,8 @@ def main():
     print("\n7. submission guard rails")
     src = (HERE / "pipeline" / "submit.py").read_text()
     code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith(("#", '"', "-")))
-    check("the submission assistant never calls click()", ".click(" not in code
-          and ".dblclick(" not in code and ".tap(" not in code)
+    check("the assisted path sets values but never activates a control",
+          ".click(" not in code and ".dblclick(" not in code and ".tap(" not in code)
     check("it never presses Enter (which submits forms)", "press(" not in code)
     for url, want in [("https://jobs.lever.co/x/1/apply", 1),
                       ("https://job-boards.greenhouse.io/x/jobs/1", 1),
@@ -277,6 +279,83 @@ def main():
                       ("https://fr.indeed.com/viewjob?jk=1", 2),
                       ("https://evil.jobs.lever.co.attacker.com/x", 2)]:
         check(f"tier {want}: {url[:44]}", SUB.tier(url, pcfg.submit_hosts) == want)
+
+    # answers come from you and only from you
+    prof = pc.load_profile(HERE / "profile.example.toml")
+    ans = prof["answers"]
+    check("a question you answered is answered",
+          SUB.answer_for("Are you legally authorized to work in Morocco? *", ans) == "Yes")
+    check("the French wording of the same question matches too",
+          SUB.answer_for("Avez-vous l'autorisation de travail ?", ans) == "Yes")
+    check("a question you did not answer stays unanswered",
+          SUB.answer_for("What are your salary expectations?", ans) is None)
+    check("a dropdown option is matched, not invented",
+          SUB._pick(["Yes", "No", "Prefer not to say"], "yes") == "Yes")
+    check("an option that is not on offer is refused",
+          SUB._pick(["Under 1 year", "1-3 years"], "Immediately") is None)
+
+    # ------------------------------------------------------------- auto-apply
+    print("\n7b. sending without you: the gate")
+    asrc = (HERE / "pipeline" / "autoapply.py").read_text()
+    check("exactly one click in the whole project's sending path",
+          asrc.count(".click(") == 1)
+    check("that click comes after the gate, in the same function",
+          asrc.index("post_gate(rep,") < asrc.index("btn.click()"))
+    run_src = asrc[asrc.index("def run("):]
+    check("it is unreachable while blockers remain, or while rehearsing",
+          run_src.index("if blockers:") < run_src.index("btn.click()")
+          and run_src.index("if rehearse:") < run_src.index("btn.click()"))
+
+    aj = db.one("SELECT * FROM jobs WHERE id='ashby:0'")
+    aa = dict(db.one("SELECT * FROM applications WHERE job_id='ashby:0'") or {})
+    am = db.one("SELECT * FROM matches WHERE job_id='ashby:0'")
+    check("off by default, nothing is eligible",
+          any("désactiv" in b for b in AA.pre_gate(pcfg, db, aj, aa, am)))
+    # a copy, never the shared pcfg: the web-interface checks below read the
+    # same object and would see auto-apply switched on
+    g = replace(pcfg, auto_apply=True, auto_min_fit=0, auto_min_ats=0,
+                auto_require_validated=False)
+    linkedin = {**dict(aj), "apply_url": "https://www.linkedin.com/jobs/view/1"}
+    check("a platform that is not automatable is refused",
+          any("plateforme" in b for b in AA.pre_gate(g, db, linkedin, aa, am)))
+    check("a fit below your floor is refused",
+          any("fit" in b for b in AA.pre_gate(
+              replace(g, auto_min_fit=200), db, aj, aa, am)))
+    check("the daily cap is a real cap",
+          any("plafond" in b for b in AA.pre_gate(
+              replace(g, auto_max_per_day=0), db, aj, aa, am)))
+    check("an application already sent is never sent twice",
+          any("déjà envoyée" in b for b in AA.pre_gate(
+              g, db, aj, {**aa, "status": "applied"}, am)))
+    check("an unread CV is never sent",
+          any("relis" in b for b in AA.pre_gate(
+              replace(g, auto_require_validated=True), db, aj,
+              {**aa, "status": "pending"}, am)))
+
+    full = {"resume": True, "captcha": False, "questions": []}
+    check("a fully filled form with no CAPTCHA passes", AA.post_gate(full, "ok") == [])
+    check("one unanswered question stops it", AA.post_gate(
+        {**full, "questions": [{"label": "Desired salary"}]}, "ok") ==
+        ["question sans réponse de toi : Desired salary"])
+    check("a CAPTCHA stops it", AA.post_gate({**full, "captcha": True}, "ok") != [])
+    check("a CV that failed to attach stops it", AA.post_gate({**full, "resume": False}, "ok") != [])
+    for state, word in [("none", "aucun bouton"), ("many", "plusieurs"), ("disabled", "désactivé")]:
+        check(f"an unusable submit button stops it ({state})",
+              any(word in b for b in AA.post_gate(full, state)))
+    check("'Save draft' is never read as 'Send'",
+          AA.NOT_SEND_RX.search("Save draft") is not None)
+    check("'Submit application' is read as 'Send'",
+          AA.SEND_RX.search("Submit application") is not None
+          and AA.NOT_SEND_RX.search("Submit application") is None)
+    check("a confirmation page is recognised",
+          AA.OK_RX.search("Thank you for applying to Acme") is not None)
+    # a real job page carries a generic Apply above the form as well
+    check("an explicit Submit wins over a generic Apply",
+          AA.EXPLICIT_RX.search("Submit application") is not None
+          and AA.EXPLICIT_RX.search("Apply for this job") is None)
+    check("two explicit send buttons are still an ambiguity",
+          len([t for t in ["Submit application", "Send application"]
+               if AA.EXPLICIT_RX.search(t)]) == 2)
 
     # ------------------------------------------------------------------ tracker
     print("\n8. tracker")
@@ -471,6 +550,26 @@ def main():
             r = client.post(f"/api/job/{jid}/prefill", headers=H)
             check("pre-filling is refused where it is not automated (LinkedIn, Indeed)",
                   r.status_code == 400, r.text[:80])
+
+            r = client.get(f"/api/job/{jid}/autoapply")
+            check("the auto-apply state route resolves, not the catch-all",
+                  r.status_code == 200 and r.json()["state"] == "idle", r.text[:80])
+            r = client.post(f"/api/job/{jid}/autoapply", headers=H, json={})
+            check("auto-apply is refused while it is switched off",
+                  r.status_code == 400 and "désactiv" in r.text, r.text[:120])
+            check("the job page carries the gate, so the panel can show it",
+                  client.get(f"/api/job/{jid}").json()["autoapply"]["blockers"] != [])
+
+            c = client.get("/api/pipeline/charts")
+            body = c.json()
+            check("the charts endpoint answers with 30 days of series",
+                  c.status_code == 200 and len(body["days"]) == 30
+                  and all(len(v) == 30 for v in body["series"].values()), c.text[:80])
+            check("fit scores are bucketed into ten bands",
+                  len(body["fit_hist"]) == 10 and sum(body["fit_hist"]) >= 1)
+            a = client.get("/api/pipeline/autoapply").json()
+            check("the auto-apply overview lists what is holding each one back",
+                  a["enabled"] is False and all("blockers" in r for r in a["rows"]))
         else:
             print("  skip  UI tailoring checks (no Chrome)")
     finally:

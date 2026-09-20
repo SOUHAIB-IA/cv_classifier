@@ -28,6 +28,32 @@ public job boards, pre-screens them for free, has cv-router pick and score the
 CV, tailors it, stages the application for you to submit, and tracks the
 outcome. See **[PIPELINE.md](PIPELINE.md)**.
 
+The dashboard at `/pipeline` shows the whole journey, labels every stage with
+who moves it along, and graphs what the pipeline is actually doing: collection
+and evaluation over 30 days, applications per day, the distribution of fit
+scores against your thresholds, and the response rate per fit bucket, which is
+what tells you whether the thresholds are set right.
+
+### Who presses send
+
+By default, you do. The system fills the employer's form in a visible window
+and stops; there is no click anywhere in `pipeline/submit.py`, and a test fails
+if one appears.
+
+You can let it send on its own with `[autoapply] enabled = true`, and then one
+rule decides: **it sends only when nothing had to be invented.** Every required
+field must have been filled from your CV, your identity, or a reply you wrote
+yourself under `[[answers]]` in `profile.toml`. A question you have not
+answered, a CAPTCHA, an ambiguous submit button, a fit or ATS score below your
+floor, a CV you have not read, the daily cap reached: any one of these stops it
+and leaves the filled form open for you. Start with `rehearse = true`, which
+runs every check and stops before the click.
+
+```bash
+python -m pipeline.autoapply --list       # what is eligible, and what blocks the rest
+python -m pipeline.autoapply --rehearse <job_id>
+```
+
 The matching is callable headlessly too:
 
 ```bash

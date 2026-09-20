@@ -1,5 +1,9 @@
 let TH = { auto: 70, review: 40 };
-let timer;
+let timer, tab = "today";
+
+// Charts and the auto-apply list are their own endpoints, fetched only for the
+// tab that shows them: the state poll runs every 15s and should stay cheap.
+const lazy = { charts: 0, auto: 0 };
 
 function row(r) {
   return `<a class="row" href="${jobHref(r.job_id)}">
@@ -25,36 +29,163 @@ function evText(e) {
                  : `CV adapté · ${d.applied ?? "?"} modifs appliquées, ${d.refused ?? 0} refusées`;
     case "review": return d.validated_cv ? "CV validé par toi" : (d.approved ? "approuvée en revue" : "écartée en revue");
     case "submit": return d.status ? `soumission : ${d.status}` : `formulaire pré-rempli (${(d.filled || []).length} champs)`;
+    case "autoapply": return autoText(d);
     case "status": return `statut → ${d.status}${d.notes ? " · " + esc(d.notes) : ""}`;
     case "error": return `<span style="color:var(--bad)">${esc(d.reason || "erreur")}</span>`;
     default: return esc(JSON.stringify(d));
   }
 }
 
-async function refresh() {
-  let s;
-  try { s = await api("/api/pipeline/state"); } catch (e) { return; }
-  TH = s.thresholds;
-  document.getElementById("th-auto").textContent = TH.auto;
-  document.getElementById("th-rev").textContent = TH.review;
-  document.getElementById("budget").textContent = `${s.budget.used} / ${s.budget.total}`;
+function autoText(d) {
+  switch (d.stage) {
+    case "sent": return `<b style="color:var(--accent)">envoyée automatiquement</b>`;
+    case "unconfirmed": return `envoyée, mais sans confirmation lue : à vérifier`;
+    case "filled": return `formulaire rempli (${(d.filled || []).length} champs, ${(d.answered || []).length} réponses)`;
+    case "handed_over": return `arrêtée avant l'envoi : ${esc((d.blockers || []).join(" · "))}`;
+    case "refused": return `non éligible : ${esc((d.blockers || []).join(" · "))}`;
+    case "rehearsed": return `répétition : tout était vert, rien n'a été envoyé`;
+    default: return esc(d.reason || d.stage || "");
+  }
+}
 
-  const f = s.funnel, L = s.lists;
+// --------------------------------------------------------------------- tabs --
+document.getElementById("tabs").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-tab]");
+  if (!b) return;
+  tab = b.dataset.tab;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + tab));
+  if (tab === "charts") loadCharts();
+  if (tab === "auto") loadAuto();
+});
+
+// ------------------------------------------------------------------- charts --
+async function loadCharts() {
+  let c;
+  try { c = await api("/api/pipeline/charts"); } catch (e) { return; }
+  lazy.charts = Date.now();
+
+  const f = window._funnel || {};
   const stats = [["sourced", "offres collectées"], ["candidates", "passées au pré-filtre"],
                  ["evaluated by model", "évaluées par cv-router"], ["auto", "fit ≥ " + TH.auto],
                  ["review", "revue"], ["applied", "envoyées"]];
   document.getElementById("funnel").innerHTML = stats.map(([k, l]) =>
     `<div class="card stat"><b>${f[k] ?? 0}</b><span>${l}</span></div>`).join("");
 
+  const names = ["Collectées", "Évaluées"];
+  document.getElementById("k-flowchart").innerHTML = names.map((n, i) =>
+    `<span><i style="background:var(--c${i + 1})"></i>${n}</span>`).join("");
+  chartLines(document.getElementById("c-daily"), {
+    labels: c.days,
+    series: [{ name: "Collectées", data: c.series.sourced },
+             { name: "Évaluées", data: c.series.evaluated }],
+  });
+
+  chartBars(document.getElementById("c-applied"), {
+    labels: c.days, data: c.series.applied,
+    fmt: v => v === 1 ? "1 candidature" : `${v} candidatures`,
+  });
+
+  document.getElementById("hist-note").textContent =
+    `Vert : adapté automatiquement (≥ ${c.thresholds.auto}). Orange : pour toi (≥ ${c.thresholds.review}). Rouge : écarté.`;
+  chartHist(document.getElementById("c-hist"),
+            { data: c.fit_hist, thresholds: c.thresholds });
+
+  const COL = { applied: "--accent", interview: "--accent", offer: "--accent",
+                draft: "--info", pending: "--info", staged: "--warn", review: "--warn",
+                skipped: "--bad", rejected: "--bad", withdrawn: "--muted" };
+  const cssv = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  chartDonut(document.getElementById("c-status"), {
+    items: c.status.map(s => ({ label: STATUS_FR[s.status] || s.status, n: s.n,
+                                color: cssv(COL[s.status] || "--line") })),
+  });
+
+  chartBarsH(document.getElementById("c-sources"),
+             { items: c.sources.map(s => ({ label: s.name, n: s.n })) });
+
+  const agg = {};
+  for (const w of c.buckets) {
+    const a = agg[w.bucket] || (agg[w.bucket] = { applied: 0, responses: 0, interviews: 0 });
+    a.applied += w.applied; a.responses += w.responses; a.interviews += w.interviews;
+  }
+  const order = [">=70", "40-69", "<40", "pre-screen"];
+  document.getElementById("buckets").innerHTML = order.filter(b => agg[b]).map(b => {
+    const a = agg[b];
+    return `<tr><td>${b === "pre-screen" ? "pré-filtre" : "fit " + b}</td>
+      <td>${a.applied}</td><td>${a.responses}</td><td>${a.interviews}</td>
+      <td>${a.applied ? Math.round(a.responses / a.applied * 100) + " %" : "–"}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="empty">Pas encore assez de candidatures envoyées.</td></tr>`;
+}
+
+// ---------------------------------------------------------------- auto-apply --
+async function loadAuto() {
+  let a;
+  try { a = await api("/api/pipeline/autoapply"); } catch (e) { return; }
+  lazy.auto = Date.now();
+  document.getElementById("t-auto").textContent = a.enabled ? String(a.rows.filter(r => r.eligible).length) : "off";
+
+  document.getElementById("auto-head").innerHTML = a.enabled
+    ? `<div class="send ${a.rehearse ? "blocked" : "ready"}">
+         <h3>${a.rehearse ? "Mode répétition" : "Actif"}</h3>
+         <div class="why">${a.rehearse
+            ? "Chaque vérification est faite jusqu'au bout, puis le système s'arrête avant le clic. Rien ne part."
+            : "Les candidatures qui passent toutes les vérifications partent sans te demander."}</div>
+         <div class="gate">
+           <div class="ok"><span class="m">✓</span>Fit minimum ${a.min_fit}, ATS minimum ${a.min_ats}</div>
+           <div class="${a.sent_today < a.max_per_day ? "ok" : "no"}"><span class="m">${a.sent_today < a.max_per_day ? "✓" : "✕"}</span>
+             Plafond du jour : ${a.sent_today} / ${a.max_per_day} envoyées</div>
+           <div class="${a.answers ? "ok" : "no"}"><span class="m">${a.answers ? "✓" : "✕"}</span>
+             ${a.answers ? `${a.answers} réponses écrites par toi dans profile.toml`
+                         : "Aucune réponse dans profile.toml : ajoute une section [[answers]], sinon rien ne pourra partir seul"}</div>
+         </div>
+       </div>`
+    : `<div class="send">
+         <h3>Désactivé</h3>
+         <div class="why">Rien ne part sans toi. Pour l'activer : <code>enabled = true</code> dans la section
+           <code>[autoapply]</code> de <code>pipeline.toml</code>, et des réponses sous <code>[[answers]]</code>
+           dans <code>profile.toml</code>. Commence par <code>rehearse = true</code> : tout est vérifié, rien n'est envoyé.</div>
+       </div>`;
+
+  document.getElementById("auto-rows").innerHTML = a.rows.map(r => `<tr>
+      <td><span class="fit ${fitClass(r.fit_score, TH)}">${r.fit_score ?? "–"}</span></td>
+      <td>${r.ats_score ?? "–"}</td>
+      <td><a href="${jobHref(r.job_id)}">${esc(r.role)}</a><div class="sub">${esc(r.company)}</div></td>
+      <td>${r.eligible ? `<span class="tag applied">prête à partir</span>`
+                       : `<span class="sub">${esc(r.blockers.join(" · "))}</span>`}</td>
+      <td>${r.eligible ? `<a class="btn small primary" href="${jobHref(r.job_id)}">Ouvrir</a>` : ""}</td>
+    </tr>`).join("")
+    || `<tr><td colspan="5" class="empty">Aucun CV validé en attente.</td></tr>`;
+}
+
+// ------------------------------------------------------------------- refresh --
+async function refresh() {
+  let s;
+  try { s = await api("/api/pipeline/state"); } catch (e) { return; }
+  TH = s.thresholds;
+  window._funnel = s.funnel;
+  document.getElementById("th-auto").textContent = TH.auto;
+  document.getElementById("th-rev").textContent = TH.review;
+  document.getElementById("budget").textContent = `${s.budget.used} / ${s.budget.total}`;
+
+  const f = s.funnel, L = s.lists;
+  const auto = s.autoapply || {};
+  document.getElementById("headline").innerHTML = auto.enabled
+    ? `Le système trouve, trie et prépare. <b>Il envoie lui-même</b> les candidatures qui passent toutes les vérifications ; les autres t'attendent.`
+    : `Le système trouve, trie et prépare. <b>C'est toi qui envoies</b> : rien n'est jamais soumis automatiquement.`;
+  document.getElementById("never").innerHTML = auto.enabled
+    ? `Ce que le système ne fait jamais, même activé : répondre à une question que tu n'as pas écrite toi-même, toucher un CAPTCHA, ou envoyer un CV que tu n'as pas relu.`
+    : `Ce que le système ne fait jamais : soumettre une candidature, répondre à une question sur ton autorisation de travail ou ton salaire, ni toucher à un CAPTCHA.`;
+
   // the journey of one job, and who moves it along at each step
+  const last = auto.enabled ? "auto ou toi" : "toi";
   const flow = [
     { n: f["sourced"] ?? 0, nm: "Collectées", by: "auto" },
     { n: f["candidates"] ?? 0, nm: "Retenues au pré-filtre", by: "auto" },
     { n: f["evaluated by model"] ?? 0, nm: "Évaluées par cv-router", by: "auto" },
     { n: L.review.length, nm: "À trancher", by: "toi", you: true },
     { n: L.draft.length + L.pending.length, nm: "CV à relire", by: "toi", you: true },
-    { n: L.staged.length, nm: "À envoyer", by: "toi", you: true },
-    { n: f["applied"] ?? 0, nm: "Envoyées", by: "toi" },
+    { n: L.staged.length, nm: "À envoyer", by: last, you: !auto.enabled },
+    { n: f["applied"] ?? 0, nm: "Envoyées", by: last },
   ];
   document.getElementById("flow").innerHTML = flow.map((x, i) =>
     `${i ? '<span class="arr">→</span>' : ""}
@@ -66,10 +197,11 @@ async function refresh() {
     { n: L.draft.length + L.pending.length, t: "CV à relire et valider",
       s: "Ouvre, lis, corrige si besoin, puis valide.", href: "#q-draft" },
     { n: L.staged.length, t: "Candidatures à envoyer",
-      s: "Le formulaire est pré-rempli ; tu cliques sur Envoyer.", href: "#q-staged" },
+      s: "Le formulaire est rempli ; il ne reste qu'à envoyer.", href: "#q-staged" },
     { n: L.review.length, t: "Offres à trancher",
       s: "Fit moyen : à toi de dire si ça vaut le coup.", href: "#q-review" },
   ].filter(x => x.n);
+  document.getElementById("t-today").textContent = todo.reduce((a, x) => a + x.n, 0);
   document.getElementById("todo").innerHTML = todo.length ? todo.map(x =>
     `<a class="hot" href="${x.href}"><b>${x.n}</b><span class="t">${x.t}<span>${x.s}</span></span>→</a>`).join("")
     : `<div class="done">Rien ne t'attend. Le pipeline continue de chercher.</div>`;
@@ -104,6 +236,9 @@ async function refresh() {
   document.getElementById("live").classList.toggle("live", s.running);
   document.getElementById("livetxt").textContent = s.running ? "cycle en cours…" : "à l'arrêt";
   ["b-dry", "b-one", "b-fetch"].forEach(id => document.getElementById(id).disabled = s.running);
+
+  if (tab === "charts" && Date.now() - lazy.charts > 20000) loadCharts();
+  if (tab === "auto" && Date.now() - lazy.auto > 10000) loadAuto();
 
   clearTimeout(timer);
   timer = setTimeout(refresh, s.running ? 2500 : 15000);
@@ -153,3 +288,4 @@ document.getElementById("m-add").onclick = () => addManual(false);
 document.getElementById("m-add-eval").onclick = () => addManual(true);
 
 refresh();
+loadAuto();   // the tab badge says off / how many are ready, before you open it

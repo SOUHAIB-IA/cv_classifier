@@ -58,6 +58,15 @@ class PipelineConfig:
     submit_channel: str = "chrome"
     submit_hosts: list[str] = field(default_factory=list)
 
+    # Sending on its own. Off unless you turn it on, and even then it only
+    # sends when nothing had to be invented: see pipeline/autoapply.py.
+    auto_apply: bool = False
+    auto_min_fit: int = 80
+    auto_min_ats: int = 70
+    auto_max_per_day: int = 5
+    auto_require_validated: bool = True
+    auto_rehearse: bool = False        # go through every check, stop before sending
+
 
 def load(path: Path | None = None) -> PipelineConfig:
     path = path or ROOT / "pipeline.toml"
@@ -69,6 +78,7 @@ def load(path: Path | None = None) -> PipelineConfig:
     t, f = raw.get("thresholds", {}), raw.get("prefilter", {})
     s, tl = raw.get("sourcing", {}), raw.get("tailor", {})
     sm = raw.get("submit", {})
+    aa = raw.get("autoapply", {})
     srcs = raw.get("sources", {})
 
     return PipelineConfig(
@@ -107,6 +117,12 @@ def load(path: Path | None = None) -> PipelineConfig:
         submit_hosts=[h.lower() for h in sm.get("allowed_hosts", [
             "boards.greenhouse.io", "job-boards.greenhouse.io",
             "jobs.lever.co", "jobs.ashbyhq.com"])],
+        auto_apply=bool(aa.get("enabled", False)),
+        auto_min_fit=int(aa.get("min_fit", 80)),
+        auto_min_ats=int(aa.get("min_ats", 70)),
+        auto_max_per_day=int(aa.get("max_per_day", 5)),
+        auto_require_validated=bool(aa.get("require_validated_cv", True)),
+        auto_rehearse=bool(aa.get("rehearse", False)),
     )
 
 
@@ -114,14 +130,32 @@ def load_profile(path: Path | None = None) -> dict:
     """Your identity for form pre-fill, merged with the per-track account.
 
     Returns {"base": {...}, "fr": {...}, "en": {...}} where fr/en already have
-    base merged in, so callers just pick the track.
+    base merged in, so callers just pick the track, plus "answers": the
+    standard questions you have answered yourself, in your own words.
     """
     path = path or ROOT / "profile.toml"
     if not path.is_file():
-        return {"base": {}, "fr": {}, "en": {}}
+        return {"base": {}, "fr": {}, "en": {}, "answers": []}
     raw = tomllib.loads(path.read_text())
     base = raw.get("identity", {})
     acc = raw.get("accounts", {})
     return {"base": base,
             "fr": {**base, **acc.get("fr", {})},
-            "en": {**base, **acc.get("en", {})}}
+            "en": {**base, **acc.get("en", {})},
+            "answers": answers(raw)}
+
+
+def answers(raw: dict) -> list[dict]:
+    """[[answers]] entries: a question pattern and the reply you wrote for it.
+
+    Nothing here is generated. A form question with no entry of yours is a
+    question the system cannot answer, and it will not send that application.
+    """
+    out = []
+    for a in raw.get("answers", []) or []:
+        q, v = a.get("match"), a.get("value")
+        if not q or v is None:
+            continue
+        out.append({"match": str(q), "value": str(v),
+                    "sensitive": bool(a.get("sensitive", False))})
+    return out

@@ -13,11 +13,13 @@ Tier 2 (LinkedIn, Indeed, anything else): nothing is automated. You get the
 tailored CV, the edit list and a cover-letter opening, and apply by hand.
 
 Hard rules, enforced in code rather than promised:
-  - This module never calls click(). It cannot submit, cannot tick a consent
-    box, cannot touch a CAPTCHA. test_pipeline.py fails if a click appears.
-  - It fills identity, contact and link fields and the CV upload only. Work
-    authorisation, salary, demographic and custom questions are left for you —
-    answering those on your behalf could misrepresent you.
+  - This module sets field values. It never activates a control: no clicks and
+    no key presses. It cannot submit and cannot touch a CAPTCHA, and
+    test_pipeline.py fails if either appears. Sending is pipeline/autoapply.py,
+    and only through the gate there.
+  - It fills identity, contact and link fields, the CV upload, and the replies
+    you wrote yourself under [[answers]] in profile.toml. It invents nothing:
+    a question with no reply of yours stays on the report for you to answer.
   - It refuses to run without an interactive terminal: a scheduled job cannot
     open forms nobody is watching.
   - Personal values from profile.toml are never logged; only field names are.
@@ -78,10 +80,15 @@ def _identity(profile: dict, lang: str) -> dict:
     return {k: v for k, v in p.items() if isinstance(v, str) and v.strip()}
 
 
-def fill_form(page, ident: dict, cv: Path) -> dict:
-    """Fill what is safe to fill. Returns a report — names only, no values."""
+def fill_form(page, ident: dict, cv: Path, answers=()) -> dict:
+    """Fill what is safe to fill. Returns a report — names only, no values.
+
+    Three sources, in order: your identity from profile.toml, the tailored CV,
+    then the replies you wrote yourself under [[answers]]. Nothing is guessed:
+    a question you have not answered stays in required_left.
+    """
     rep = {"filled": [], "not_found": [], "resume": False, "captcha": False,
-           "required_left": []}
+           "answered": [], "questions": [], "required_left": []}
 
     for key, label_rx, selectors in FIELDS:
         val = ident.get(key)
@@ -127,26 +134,119 @@ def fill_form(page, ident: dict, cv: Path) -> dict:
             except Exception:
                 continue
 
+    for f in required_fields(page):
+        val = answer_for(f["label"], answers)
+        if val is None or not set_field(page, f, val):
+            continue
+        rep["answered"].append(f["label"])
+
     rep["captcha"] = any(page.locator(s).count() for s in CAPTCHA)
-    try:
-        rep["required_left"] = page.evaluate("""() => {
-          const out = [];
-          for (const el of document.querySelectorAll(
-                 'input[required], textarea[required], select[required], [aria-required="true"]')) {
-            if (el.type === 'hidden' || el.type === 'file') continue;
-            const empty = (el.type === 'checkbox' || el.type === 'radio')
-              ? !document.querySelector(`[name="${CSS.escape(el.name)}"]:checked`)
-              : !String(el.value || '').trim();
-            if (!empty) continue;
-            const lab = (el.labels && el.labels[0] && el.labels[0].innerText)
-                     || el.getAttribute('aria-label') || el.name || el.id || el.type;
-            out.push(lab.trim().replace(/\\s+/g, ' ').slice(0, 80));
-          }
-          return [...new Set(out)];
-        }""")
-    except Exception:
-        pass
+    rep["questions"] = required_fields(page)          # what is still open
+    rep["required_left"] = [f["label"] for f in rep["questions"]]
     return rep
+
+
+# Every control the form itself marks as required and that is still empty,
+# with enough about it to fill it: its kind, its options, and a selector that
+# finds it again. Anything left in this list is a question nobody has answered.
+JS_REQUIRED = """() => {
+  const sel = el => el.id ? '#' + CSS.escape(el.id)
+             : el.name ? `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]` : '';
+  const label = el => ((el.labels && el.labels[0] && el.labels[0].innerText)
+                    || el.getAttribute('aria-label')
+                    || (el.closest('label') && el.closest('label').innerText)
+                    || el.name || el.id || el.type || '')
+                    .trim().replace(/\\s+/g, ' ').replace(/\\s*\\*$/, '').slice(0, 120);
+  const out = [], seen = new Set();
+  for (const el of document.querySelectorAll(
+         'input[required], textarea[required], select[required], [aria-required="true"]')) {
+    if (el.type === 'hidden' || el.type === 'file' || el.disabled) continue;
+    if (!(el.offsetParent || el.getClientRects().length)) continue;   // hidden branch
+    const radio = el.type === 'radio';
+    const empty = (el.type === 'checkbox' || radio)
+      ? !(el.name && document.querySelector(`[name="${CSS.escape(el.name)}"]:checked`))
+      : !String(el.value || '').trim();
+    if (!empty) continue;
+    const kind = radio ? 'radio'
+               : el.type === 'checkbox' ? 'checkbox'
+               : el.tagName === 'SELECT' ? 'select'
+               : el.tagName === 'TEXTAREA' ? 'textarea' : 'text';
+    const key = (kind === 'radio' ? 'r:' + el.name : sel(el) || label(el));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let options = [], s = '';
+    if (kind === 'select') {
+      options = [...el.options].map(o => o.label || o.text).filter(t => t && t.trim());
+      s = sel(el);
+    } else if (kind === 'radio') {
+      s = `input[type="radio"][name="${CSS.escape(el.name)}"]`;
+      options = [...document.querySelectorAll(s)].map(label);
+    } else {
+      s = sel(el);
+    }
+    if (!s) continue;
+    out.push({label: label(el), kind, sel: s, options});
+  }
+  return out;
+}"""
+
+
+def required_fields(page) -> list[dict]:
+    try:
+        return page.evaluate(JS_REQUIRED) or []
+    except Exception:
+        return []
+
+
+def answer_for(label: str, answers) -> str | None:
+    """The reply you wrote for this question, or None. Never invents one."""
+    for a in answers or ():
+        try:
+            if re.search(a["match"], label or "", re.I):
+                return a["value"]
+        except re.error:
+            continue
+    return None
+
+
+def _pick(options: list[str], value: str) -> str | None:
+    v = value.strip().lower()
+    for o in options:
+        if o.strip().lower() == v:
+            return o
+    for o in options:
+        if v and v in o.strip().lower():
+            return o
+    return None
+
+
+def set_field(page, f: dict, value: str) -> bool:
+    """Put your answer into one control. Sets a value; activates no button."""
+    try:
+        if f["kind"] in ("text", "textarea"):
+            page.locator(f["sel"]).first.fill(value)
+            return True
+        if f["kind"] == "select":
+            opt = _pick(f.get("options") or [], value)
+            if opt is None:
+                return False
+            page.select_option(f["sel"], label=opt)
+            return True
+        if f["kind"] == "radio":
+            opts = f.get("options") or []
+            opt = _pick(opts, value)
+            if opt is None:
+                return False
+            page.locator(f["sel"]).nth(opts.index(opt)).check()
+            return True
+        if f["kind"] == "checkbox":
+            if value.strip().lower() not in ("yes", "oui", "true", "1", "on", "i agree", "agree"):
+                return False
+            page.locator(f["sel"]).first.check()
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def staged(db: DB) -> list:
@@ -167,7 +267,7 @@ def cv_file(pcfg: pc.PipelineConfig, app) -> Path:
 
 
 def open_and_fill(pcfg: pc.PipelineConfig, apply_url: str, ident: dict, cv: Path, *,
-                  on_filled=None) -> dict:
+                  answers=(), on_filled=None) -> dict:
     """Open the form in a real window, fill what is safe to fill, and leave it
     open for you. Returns the report; on_filled gets it as soon as the fields
     are in, before the wait, so a caller can show it while you read the form.
@@ -184,7 +284,7 @@ def open_and_fill(pcfg: pc.PipelineConfig, apply_url: str, ident: dict, cv: Path
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(apply_url, wait_until="domcontentloaded", timeout=60_000)
         page.wait_for_timeout(2500)                  # let the form render
-        rep = fill_form(page, ident, cv)
+        rep = fill_form(page, ident, cv, answers)
         if on_filled:
             on_filled(rep)
         try:
@@ -228,9 +328,11 @@ def submit(db: DB, pcfg: pc.PipelineConfig, job_id: str, *, ask=input) -> str:
 
     def show(rep):
         db.event("submit", job_id, stage="prefilled", filled=rep["filled"],
-                 resume=rep["resume"], captcha=rep["captcha"],
-                 required_left=len(rep["required_left"]))
+                 answered=rep["answered"], resume=rep["resume"],
+                 captcha=rep["captcha"], required_left=len(rep["required_left"]))
         print(f"\n  filled   : {', '.join(rep['filled']) or 'nothing'}")
+        if rep["answered"]:
+            print(f"  answered : {', '.join(rep['answered'])} (from your profile.toml)")
         print(f"  CV       : {'attached' if rep['resume'] else 'NOT attached, attach it yourself'}")
         if rep["required_left"]:
             print("  still required, for you to answer:")
@@ -241,7 +343,8 @@ def submit(db: DB, pcfg: pc.PipelineConfig, job_id: str, *, ask=input) -> str:
         print("\n  Review everything, then click submit in the browser yourself.")
         print("  Close the browser window when you are done.")
 
-    open_and_fill(pcfg, job["apply_url"], ident, cv, on_filled=show)
+    open_and_fill(pcfg, job["apply_url"], ident, cv,
+                  answers=profile.get("answers", []), on_filled=show)
     return _record(db, job_id, ask)
 
 

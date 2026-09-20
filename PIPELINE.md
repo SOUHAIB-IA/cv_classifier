@@ -43,7 +43,8 @@ systemctl --user enable --now cv-router-pipeline.timer    # every ~45 min
 | cv-router headless entry | `matcher.py`, `match.py`, `POST /api/v1/match` | the logic the portal already used, lifted out and shared |
 | Orchestrator | `pipeline/orchestrate.py` | pre-screen, dedupe, budget, thresholds; resumable |
 | CV Auto-Tailoring Engine | `pipeline/tailor.py`, `templates/cv.html` | see below — the spec's template did not exist |
-| Submission Assistant | `pipeline/submit.py` | Tier 1 staged, Tier 2 manual, never clicks |
+| Submission Assistant | `pipeline/submit.py` | Tier 1 filled and handed to you, Tier 2 manual; sets values, never activates a control |
+| (sending on its own) | `pipeline/autoapply.py` | off by default; the only click in the project, behind `pre_gate` and `post_gate` |
 | Tracker Service | `pipeline/tracker.py`, `pipeline/db.py` | SQLite is the store; the xlsx is exported from it |
 | (calibration) | `pipeline/calibrate.py` | label 10-15 jobs, get thresholds that match you |
 
@@ -104,8 +105,13 @@ It does **not** look like your FlowCV design: no photo, no sidebar.
 
 | Rule | Enforced by |
 |---|---|
-| You click submit, always | `submit.py` contains no `click()`, no key press; a test fails if one appears |
-| No CAPTCHA circumvention | nothing interacts with them; their presence is reported to you |
+| The assisted path never submits | `submit.py` contains no `click()`, no key press; a test fails if one appears |
+| Sending on its own is off until you turn it on | `[autoapply] enabled = false`; `pre_gate` refuses everything while it is false |
+| Nothing is ever invented to get a form sent | every required field must come from your CV, your identity, or an `[[answers]]` reply you wrote; one left over and `post_gate` stops it |
+| An ambiguous form is never submitted | `submit_button()` refuses when zero, several, or a disabled candidate matches |
+| A send is never reported as success on faith | the employer's confirmation must be read back, or the status stays `staged` with a note |
+| No CAPTCHA circumvention | nothing interacts with them; their presence blocks auto-send and is reported to you |
+| A hard ceiling on unattended sends | `max_per_day`, counted from the event log, charged before the browser opens |
 | LinkedIn / Indeed never automated | not sourced; `submit.py` treats any non-Greenhouse/Lever/Ashby host as manual |
 | Never apply twice | company + normalised title checked against the tracker before evaluation |
 | One role posted per region counts once | twins collapsed; the best-placed posting is kept |

@@ -45,7 +45,8 @@ async function load() {
   doc = D.cv && D.cv.doc ? JSON.parse(JSON.stringify(D.cv.doc)) : null;
   base = D.cv ? D.cv.base : null;
   dirty = false; reverted = new Set();
-  renderHead(); renderVerdict(); renderEdits(); renderEditor(); schedulePreview(0);
+  renderHead(); renderSend(); renderVerdict(); renderEdits(); renderEditor();
+  schedulePreview(0);
   $("jd").textContent = D.job.jd_text || "";
   setDirty(false);
 }
@@ -58,9 +59,10 @@ function stepper(st, hasMatch, hasCv) {
   if (hasCv || st === "draft") at = "cv";
   if (st === "staged") at = "validated";
   if (["applied", "interview", "rejected", "offer"].includes(st)) at = "sent";
+  const by = (D.autoapply && D.autoapply.enabled) ? "auto ou toi" : "toi";
   const labels = [["new", "Ajoutée", "auto"], ["evaluated", "Évaluée", "auto"],
                   ["cv", "CV préparé", "auto"], ["validated", "Validé par toi", "toi"],
-                  ["sent", "Envoyée par toi", "toi"]];
+                  ["sent", "Envoyée", by]];
   const idx = order.indexOf(at);
   return `<div class="steps">` + labels.map(([k, l, by], i) => {
     const cls = i < idx ? "done" : i === idx ? "now" : "";
@@ -82,8 +84,7 @@ function renderHead() {
                  `<button data-act="tailor">Refaire depuis l'original</button>`,
                  `<button class="danger" data-act="skip">Écarter l'offre</button>`);
   } else if (st === "staged") {
-    if (D.tier === 1) actions.push(`<button class="primary" data-act="prefill">Pré-remplir le formulaire</button>`);
-    else actions.push(`<a class="btn primary" target="_blank" rel="noopener" href="${esc(j.apply_url || "#")}">Ouvrir l'annonce et postuler</a>`);
+    // the buttons for this stage live in the send panel, next to the checks
     actions.push(`<button data-act="applied">J'ai envoyé la candidature</button>`,
                  `<button class="danger" data-act="withdrawn">Abandonner</button>`);
   } else if (["applied", "interview", "rejected", "offer"].includes(st)) {
@@ -100,9 +101,7 @@ function renderHead() {
         ${a && a.cv_variant ? `<span class="sub"> · CV de base : ${esc(a.cv_variant)}</span>` : ""}</div>
       ${stepper(st, !!m, !!D.cv)}
       <div class="actions">${actions.join("")}</div>
-      ${st === "staged" ? `<div class="sub" style="margin-top:8px">${D.tier === 1
-          ? "Le formulaire s'ouvre dans une fenêtre, rempli avec tes coordonnées et ton CV. Tu relis, tu réponds au reste, et c'est toi qui cliques sur Envoyer."
-          : "Cette plateforme n'est pas automatisée (LinkedIn, Indeed). Ouvre l'annonce et postule avec le CV préparé."}</div>` : ""}
+      <div id="send"></div>
       <div id="prefill"></div>
     </div>
     <div class="scores">
@@ -381,6 +380,103 @@ function setDirty(v) {
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 // ------------------------------------------------------------- pre-filling --
+// --------------------------------------------------------- sending it off --
+// One panel for the last step, because the last step is the irreversible one.
+// It shows the gate before it shows a button: every condition, met or not.
+function renderSend() {
+  const box = $("send");
+  if (!box) return;
+  const st = D.app ? D.app.status : "new";
+  if (st !== "staged") { box.innerHTML = ""; return; }
+
+  if (D.tier !== 1) {
+    box.innerHTML = `<div class="send">
+      <h3>À faire à la main</h3>
+      <div class="why">LinkedIn et Indeed ne sont pas automatisés : ni remplissage, ni envoi.
+        Ouvre l'annonce et postule avec le CV préparé ci-contre.</div>
+      <div class="acts">
+        <a class="btn primary" target="_blank" rel="noopener" href="${esc(D.job.apply_url || "#")}">Ouvrir l'annonce</a>
+        <a class="btn" target="_blank" href="/job/${encodeURIComponent(JOB_ID)}/cv.pdf">Ouvrir le PDF</a>
+      </div></div>`;
+    return;
+  }
+
+  const aa = D.autoapply || {};
+  const blockers = aa.blockers || [];
+  const m = D.match || {};
+  const ready = aa.enabled && !blockers.length;
+
+  const checks = ready ? [
+    ["ok", `fit ${m.fit_score} et ATS ${m.ats_score}, au-dessus de tes seuils (${aa.min_fit} / ${aa.min_ats})`],
+    ["ok", `CV relu et validé par toi`],
+    ["ok", `plafond du jour : ${aa.sent_today} / ${aa.max_per_day} envoyées`],
+  ] : blockers.map(b => ["no", b]);
+
+  box.innerHTML = `<div class="send ${ready ? "ready" : "blocked"}">
+    <h3>${ready ? (aa.rehearse ? "Tout est vert (mode répétition)" : "Prête à partir sans toi")
+                : "L'envoi automatique ne s'appliquera pas ici"}</h3>
+    <div class="why">${ready
+      ? `Il reste deux vérifications qui ne peuvent se faire qu'une fois le formulaire ouvert :
+         <b>aucune question sans une réponse écrite par toi</b>, et <b>aucun CAPTCHA</b>.
+         Si l'une échoue, le système s'arrête et te laisse la fenêtre déjà remplie.`
+      : `Le formulaire sera rempli, puis la main te revient pour le dernier clic.`}</div>
+    <div class="gate">${checks.map(([k, t]) =>
+      `<div class="${k}"><span class="m">${k === "ok" ? "✓" : "✕"}</span><span>${esc(t)}</span></div>`).join("")}</div>
+    <div class="acts">
+      ${ready && !aa.rehearse ? `<button class="primary" data-act="autoapply">Remplir et envoyer</button>` : ""}
+      ${ready ? `<button data-act="rehearse">Répétition : tout vérifier, ne rien envoyer</button>` : ""}
+      <button class="${ready ? "" : "primary"}" data-act="prefill">Remplir et me laisser la main</button>
+      <a class="btn" target="_blank" rel="noopener" href="${esc(D.job.apply_url || "#")}">Ouvrir le formulaire seul</a>
+    </div>
+    <div id="autostate"></div></div>`;
+}
+
+// The window stays visible the whole time, so you can watch and take over.
+let autoTimer = null;
+
+function renderAuto(st) {
+  const box = $("autostate");
+  if (!box) return;
+  if (!st || st.state === "idle") { box.innerHTML = ""; return; }
+  const r = st.report || {};
+  const left = (r.required_left || []).slice(0, 12);
+  const body = {
+    running: `<h3>Formulaire en cours de remplissage…</h3>
+              <div>La fenêtre est visible : tu peux suivre, et reprendre la main à tout moment.</div>`,
+    filled: `<h3>Rempli : ${(r.filled || []).length} champs, ${(r.answered || []).length} réponses</h3>
+             <div>Vérification de la dernière barrière…</div>`,
+    handed_over: `<h3>Arrêté avant l'envoi</h3>
+      <div>Le formulaire est rempli et ouvert. Ce qui a bloqué :</div>
+      <ul>${(st.blockers || []).map(b => `<li>${esc(b)}</li>`).join("")}</ul>
+      ${left.length ? `<div>Questions restantes : ${left.map(esc).join(", ")}</div>` : ""}
+      <div style="margin-top:6px"><b>Complète dans la fenêtre, puis clique sur Envoyer toi-même.</b></div>`,
+    rehearsed: `<h3>Répétition réussie</h3>
+      <div>Toutes les vérifications sont passées. <b>Rien n'a été envoyé.</b> Mets
+      <code>rehearse = false</code> dans <code>pipeline.toml</code> pour que ce cas parte vraiment.</div>`,
+    sent: `<h3 style="color:var(--accent)">Envoyée, et confirmée par l'employeur</h3>
+           <div>Le statut est passé à « envoyée ».</div>`,
+    unconfirmed: `<h3>Envoyée, mais sans confirmation lue</h3>
+      <div>Le clic est parti, mais aucune page de confirmation n'a été reconnue.
+      Vérifie dans la fenêtre : si c'est bien passé, marque-la comme envoyée.</div>`,
+    refused: `<h3>Non éligible</h3><ul>${(st.blockers || []).map(b => `<li>${esc(b)}</li>`).join("")}</ul>`,
+    error: `<h3>Échec</h3><div>${esc(st.note || "")}</div>`,
+  }[st.state] || `<div>${esc(st.state)}</div>`;
+
+  box.innerHTML = `<div class="panel" style="margin-top:12px">${body}
+    ${["handed_over", "unconfirmed"].includes(st.state)
+      ? `<div class="acts" style="margin-top:8px"><button class="primary" data-act="applied">C'est envoyé</button></div>` : ""}
+  </div>`;
+}
+
+async function pollAuto() {
+  clearTimeout(autoTimer);
+  let st;
+  try { st = await api(`/api/job/${JOB_ID}/autoapply`); } catch (e) { return; }
+  renderAuto(st);
+  if (["running", "filled"].includes(st.state)) autoTimer = setTimeout(pollAuto, 2000);
+  else if (st.state === "sent") load();
+}
+
 // The form opens in a real window, filled with your details and CV, and stops
 // there. Nothing clicks submit: that is yours.
 let prefillTimer = null;
@@ -451,6 +547,21 @@ $("head").addEventListener("click", async ev => {
       pollPrefill();
       b.disabled = false; b.textContent = label;
       return;
+    } else if (act === "autoapply" || act === "rehearse") {
+      // The only irreversible action in the interface, so it is the only one
+      // that asks — and it names the employer, not just "confirm?".
+      const real = act === "autoapply";
+      if (real && !confirm(
+            `Envoyer ta candidature à ${D.job.company} pour « ${D.job.title} » ?\n\n`
+          + `Le formulaire sera rempli puis soumis, sans autre confirmation.\n`
+          + `Une candidature envoyée ne se reprend pas.`)) {
+        b.disabled = false; return;
+      }
+      b.textContent = real ? "Envoi en cours…" : "Répétition…";
+      await api(`/api/job/${JOB_ID}/autoapply`, { rehearse: !real });
+      pollAuto();
+      b.disabled = false; b.textContent = label;
+      return;
     } else if (act === "validate") {
       if (dirty) await save();
       await api(`/api/job/${JOB_ID}/status`, { action: "validate" });
@@ -463,5 +574,8 @@ $("head").addEventListener("click", async ev => {
   } catch (e) { toast("Erreur : " + e.message); b.disabled = false; b.textContent = label; }
 });
 
-pollPrefill();
-load().catch(e => { $("head").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; });
+// After load, not before: both panels render into containers that renderHead
+// and renderSend create, so polling first would drop the state on the floor.
+load()
+  .then(() => { pollPrefill(); pollAuto(); })
+  .catch(e => { $("head").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; });

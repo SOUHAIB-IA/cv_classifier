@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import threading
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -28,6 +29,7 @@ from pipeline import fetch as F
 from pipeline import orchestrate as O
 from pipeline import tailor as T
 from pipeline import submit as SUB
+from pipeline import autoapply as AA
 from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 
@@ -38,6 +40,7 @@ RUN_LOG = HERE / "data" / "last_run.log"
 _run: dict = {"proc": None}
 # One pre-fill at a time, per job: the browser window is the shared resource.
 _prefill: dict = {}
+_auto: dict = {}
 
 
 def _ctx():
@@ -94,6 +97,9 @@ def state():
     log_tail = RUN_LOG.read_text()[-6000:] if RUN_LOG.is_file() else ""
     return JSONResponse({
         "funnel": TR.funnel(db),
+        "autoapply": {"enabled": pcfg.auto_apply, "rehearse": pcfg.auto_rehearse,
+                      "sent_today": AA.sent_today(db),
+                      "max_per_day": pcfg.auto_max_per_day},
         "budget": {"used": db.matches_today(), "total": pcfg.daily_match_budget},
         "thresholds": {"auto": pcfg.threshold_auto, "review": pcfg.threshold_review},
         "running": _running(),
@@ -114,6 +120,66 @@ def state():
             "SELECT source, board, last_fetched, n_jobs, last_error FROM boards "
             "ORDER BY last_fetched DESC")],
         "log": log_tail,
+    })
+
+
+@router.get("/api/pipeline/charts")
+def charts():
+    """Aggregates for the graphs. Read-only, cheap, no model call."""
+    pcfg, cfg, db = _ctx()
+    days = [(date.today() - timedelta(days=i)).isoformat() for i in range(29, -1, -1)]
+
+    def per_day(sql: str, *a) -> list[int]:
+        d = {r[0]: r[1] for r in db.q(sql, *a)}
+        return [d.get(x, 0) for x in days]
+
+    hist = [0] * 10
+    for r in db.q("SELECT fit_score FROM applications WHERE fit_score IS NOT NULL"):
+        hist[min(int(r[0]) // 10, 9)] += 1
+
+    sent = TR.SENT
+    marks = ",".join("?" * len(sent))
+    applied = db.one(f"SELECT COUNT(*) FROM applications WHERE status IN ({marks})",
+                     *sent)[0]
+    answered = db.one("SELECT COUNT(*) FROM applications WHERE status IN "
+                      "('rejected','interview','offer')")[0]
+
+    return JSONResponse({
+        "days": days,
+        "series": {
+            "sourced": per_day("SELECT date(first_seen,'localtime') d, COUNT(*) "
+                               "FROM jobs GROUP BY d"),
+            "evaluated": per_day("SELECT date(created_at,'localtime') d, COUNT(*) "
+                                 "FROM matches GROUP BY d"),
+            "applied": per_day(f"SELECT date, COUNT(*) FROM applications "
+                               f"WHERE status IN ({marks}) GROUP BY date", *sent),
+        },
+        "fit_hist": hist,
+        "thresholds": {"auto": pcfg.threshold_auto, "review": pcfg.threshold_review},
+        "status": [{"status": r[0] or "?", "n": r[1]} for r in db.q(
+            "SELECT status, COUNT(*) FROM applications GROUP BY status "
+            "ORDER BY COUNT(*) DESC")],
+        "sources": [{"name": r[0], "n": r[1]} for r in db.q(
+            "SELECT source, COUNT(*) FROM jobs GROUP BY source ORDER BY 2 DESC")],
+        "buckets": TR.weekly(db),
+        "rates": {"applied": applied, "answered": answered,
+                  "rate": round(answered / applied, 3) if applied else None},
+    })
+
+
+@router.get("/api/pipeline/autoapply")
+def autoapply_state():
+    """What could be sent without you, and what is holding each one back."""
+    pcfg, cfg, db = _ctx()
+    return JSONResponse({
+        "enabled": pcfg.auto_apply,
+        "rehearse": pcfg.auto_rehearse,
+        "min_fit": pcfg.auto_min_fit,
+        "min_ats": pcfg.auto_min_ats,
+        "max_per_day": pcfg.auto_max_per_day,
+        "sent_today": AA.sent_today(db),
+        "answers": len(pc.load_profile().get("answers", [])),
+        "rows": AA.eligible(pcfg, db),
     })
 
 
@@ -178,6 +244,45 @@ def job_prefill_state(job_id: str):
     return _prefill.get(job_id) or {"state": "idle"}
 
 
+@router.get("/api/job/{job_id:path}/autoapply")
+def job_autoapply_state(job_id: str):
+    return _auto.get(job_id) or {"state": "idle"}
+
+
+@router.post("/api/job/{job_id:path}/autoapply")
+def job_autoapply(job_id: str, payload: dict | None = None,
+                  x_cv_router: str | None = Header(default=None)):
+    """Fill the form and send it, but only if the gate in autoapply.py agrees.
+
+    The browser window is visible the whole time. If anything is unanswered it
+    stops and the window stays open for you.
+    """
+    _guard(x_cv_router)
+    pcfg, cfg, db = _ctx()
+    rehearse = bool((payload or {}).get("rehearse"))
+    job = db.one("SELECT * FROM jobs WHERE id=?", job_id)
+    app = db.one("SELECT * FROM applications WHERE job_id=?", job_id)
+    m = db.one("SELECT * FROM matches WHERE job_id=?", job_id)
+    blockers = AA.pre_gate(pcfg, db, job, app, m)
+    if blockers:
+        raise HTTPException(400, "; ".join(blockers))
+    st = _auto.get(job_id)
+    if st and st.get("state") in ("running", "filled"):
+        return st
+    _auto[job_id] = {"state": "running", "rehearse": rehearse}
+
+    def work():
+        try:
+            AA.run(pcfg, DB(pcfg.db), job_id, rehearse=rehearse,
+                   log=lambda *a: None,
+                   on_state=lambda res: _auto.__setitem__(job_id, res))
+        except Exception as e:
+            _auto[job_id] = {"state": "error", "note": str(e)[:300]}
+
+    threading.Thread(target=work, daemon=True).start()
+    return {"state": "running", "rehearse": rehearse}
+
+
 @router.get("/api/job/{job_id:path}")
 def job_data(job_id: str):
     pcfg, cfg, db = _ctx()
@@ -194,6 +299,13 @@ def job_data(job_id: str):
     if m:
         out["match"] = {**dict(m), "raw": json.loads(m["raw"] or "{}"),
                         "suggested_edits": json.loads(m["suggested_edits"] or "[]")}
+    out["autoapply"] = {
+        "enabled": pcfg.auto_apply,
+        "rehearse": pcfg.auto_rehearse,
+        "min_fit": pcfg.auto_min_fit, "min_ats": pcfg.auto_min_ats,
+        "sent_today": AA.sent_today(db), "max_per_day": pcfg.auto_max_per_day,
+        "blockers": AA.pre_gate(pcfg, db, job, app, m),
+    }
     if app and app["cv_filename"]:
         try:
             cv = T.load_cv(pcfg, cfg, db, job_id)

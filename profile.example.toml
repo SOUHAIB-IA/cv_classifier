@@ -18,3 +18,44 @@ portfolio  = "https://ada.example.org"
 
 [accounts.en]
 # email = "ada.en@example.org"
+
+# ---------------------------------------------------------------------------
+# The standard questions, answered by you, once.
+#
+# `match` is a regular expression tried against the question's label on the
+# form; `value` is the reply. For a dropdown or a radio group, the value is
+# matched against the options, so "Yes" picks the "Yes" option.
+#
+# This is the only source of answers. A question with no entry here is one the
+# system cannot answer: it will fill everything else and hand you the form,
+# and it will never send that application on its own.
+# ---------------------------------------------------------------------------
+[[answers]]
+match = "authori[sz]ed to work|legally (entitled|authorized)|droit de travailler|autorisation de travail"
+value = "Yes"
+
+[[answers]]
+match = "require .*(sponsorship|visa)|besoin d'un visa|parrainage"
+value = "No"
+
+[[answers]]
+match = "notice period|pr[ée]avis|when can you start|date de disponibilit"
+value = "Immediately"
+
+[[answers]]
+match = "years of experience|ann[ée]es d'exp[ée]rience"
+value = "2"
+
+[[answers]]
+match = "how did you (hear|find)|comment avez-vous connu"
+value = "Company website"
+
+[[answers]]
+match = "gender|genre|ethnicit|race|veteran|disabilit|handicap"
+value = "I don't wish to answer"
+sensitive = true
+
+# Leave salary out on purpose unless you want a number sent without you:
+# [[answers]]
+# match = "salary|r[ée]mun[ée]ration|pr[ée]tentions"
+# value = "Negotiable"

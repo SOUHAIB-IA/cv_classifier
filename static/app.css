@@ -3,12 +3,15 @@
   --accent: #3d5a3d; --accent-ink: #fff; --accent-soft: #edf3ed;
   --warn: #8a5a1f; --warn-soft: #fcf3e3; --bad: #9a3030; --bad-soft: #fbeded;
   --info: #2d4f86; --info-soft: #ebf0fa; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* chart palette, in drawing order */
+  --c1: #3d5a3d; --c2: #2d4f86; --c3: #8a5a1f; --c4: #7a4a7a; --c5: #2f7a76;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #15161a; --card: #1d1f24; --ink: #e8e6e1; --muted: #9a968e; --line: #30333a;
           --accent: #8fbf8f; --accent-ink: #10130f; --accent-soft: #1d291d;
           --warn: #dcab4f; --warn-soft: #2a2316; --bad: #e39090; --bad-soft: #2c1b1b;
-          --info: #8fb0e6; --info-soft: #1a2233; }
+          --info: #8fb0e6; --info-soft: #1a2233;
+          --c1: #8fbf8f; --c2: #8fb0e6; --c3: #dcab4f; --c4: #c79bc7; --c5: #6fc4bf; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink);
@@ -127,3 +130,51 @@ details > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .how ol { margin: 8px 0 0 18px; padding: 0; }
 .how li { margin-bottom: 5px; }
 .how b { color: var(--ink); }
+
+/* ------------------------------------------------------------------ charts -- */
+.chart-host { position: relative; }
+.chart { display: block; overflow: visible; }
+.chart text.ax { font: 10.5px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+.chart text.lg { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+.chart text.big { font: 700 22px var(--mono); fill: var(--ink); }
+.ctip { position: absolute; pointer-events: none; opacity: 0; transition: opacity .12s;
+        transform: translateX(-50%); background: var(--ink); color: var(--bg);
+        font-size: 12px; line-height: 1.45; padding: 6px 9px; border-radius: 6px;
+        white-space: nowrap; z-index: 6; }
+.ctip.on { opacity: .96; }
+.ckey { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted);
+        margin-top: 2px; }
+.ckey i { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+          margin-right: 5px; vertical-align: -1px; }
+
+/* -------------------------------------------------------------------- tabs -- */
+/* The dashboard was one long scroll, so what needed doing today sat next to a
+   fetch log. Tabs put the day's work first and keep the rest one click away. */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 16px 0 0;
+        overflow-x: auto; }
+.tabs button { border: 0; background: none; border-radius: 0; color: var(--muted);
+               padding: 9px 14px; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs .n { font: 600 11px var(--mono); background: var(--line); color: var(--muted);
+           border-radius: 10px; padding: 1px 6px; margin-left: 6px; }
+.tabs button.on .n { background: var(--accent); color: var(--accent-ink); }
+.tab { display: none; padding-top: 16px; }
+.tab.on { display: block; }
+
+/* ------------------------------------------------------- the sending panel -- */
+/* Sending is the one irreversible step, so its panel states the gate out loud:
+   every condition, met or not, before any button is offered. */
+.send { border-radius: 10px; border: 1px solid var(--line); padding: 14px; margin-top: 12px; }
+.send.ready { border-color: var(--accent); background: var(--accent-soft); }
+.send.blocked { border-color: var(--warn); background: var(--warn-soft); }
+.send h3 { margin: 0 0 4px; font-size: 14px; }
+.send .why { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+.gate { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12.5px; }
+.gate div { display: flex; gap: 7px; align-items: flex-start; }
+.gate .m { flex: none; font-weight: 700; width: 14px; text-align: center; }
+.gate .ok .m { color: var(--accent); }
+.gate .no .m { color: var(--bad); }
+.gate .no { color: var(--ink); }
+.gate .ok { color: var(--muted); }
+.send .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+.live-state { font-size: 12.5px; color: var(--muted); display: flex; gap: 7px; align-items: center; }

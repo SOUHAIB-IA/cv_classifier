@@ -106,3 +106,16 @@ register_in_cv_library = false
 browser_channel = "chrome"   # use the installed Chrome, no browser download
 allowed_hosts = ["boards.greenhouse.io", "job-boards.greenhouse.io",
                  "jobs.lever.co", "jobs.ashbyhq.com"]
+
+[autoapply]
+# Sending without asking you. Off by default, and even on it only sends when
+# nothing had to be invented: every required field filled from your CV, your
+# identity, or an [[answers]] reply you wrote yourself in profile.toml.
+# One unanswered question, one CAPTCHA, one ambiguous submit button, and it
+# stops and leaves the filled form open for you.
+enabled = false
+min_fit = 80                 # below this, you decide
+min_ats = 70
+max_per_day = 5              # a hard cap, counted from the event log
+require_validated_cv = true  # you must have read the CV first
+rehearse = false             # true: run every check, stop before the click
