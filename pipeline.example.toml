@@ -94,6 +94,12 @@ max_pages = 1
 # be limited to some languages. Each CV can also turn it off in the editor.
 photo = ""
 photo_langs = ["fr", "en"]
+# The contact line's links. "label" prints the word (LinkedIn, GitHub,
+# Portfolio) and hyperlinks it; "url" prints the address itself. Either way the
+# link is a real PDF annotation, so it is clickable in any reader.
+# The addresses come from [identity] in profile.toml, so every CV carries the
+# same ones, whatever the base PDF happened to have.
+link_style = "label"
 # Typeface: calibri (default) | cambria | garamond | arial. Each CV can switch
 # from the editor.
 style = "calibri"

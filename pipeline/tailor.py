@@ -140,6 +140,10 @@ class TailorError(RuntimeError):
     pass
 
 
+def _same_url(u: str) -> str:
+    return (u or "").strip().rstrip("/").lower().replace("://www.", "://")
+
+
 def pdf_links(pdf: Path) -> list[str]:
     """The web links a CV builder stores as clickable annotations. pdftotext
     only sees their labels ("LinkedIn"), never the address behind them."""
@@ -150,6 +154,72 @@ def pdf_links(pdf: Path) -> list[str]:
         return []
     urls = [ln.split()[-1] for ln in out.splitlines()[1:] if ln.split()]
     return [u for u in dict.fromkeys(urls) if u.startswith(("http://", "https://"))]
+
+
+LINK_LABELS = {"linkedin": "LinkedIn", "github": "GitHub", "site": "Portfolio"}
+
+
+def link_kind(u: str) -> str:
+    u = (u or "").lower()
+    return "linkedin" if "linkedin.com" in u else "github" if "github.com" in u else "site"
+
+
+def _label_kind(lbl: str) -> str:
+    l = (lbl or "").lower()
+    return "linkedin" if "linked" in l else "github" if "git" in l else "site"
+
+
+def _href(u: str) -> str:
+    """A bare host is a relative path to a browser, and a relative path makes
+    no clickable annotation in the PDF. Give every address a scheme."""
+    u = (u or "").strip()
+    return u if u.startswith(("http://", "https://", "mailto:")) else f"https://{u}"
+
+
+def profile_links(lang: str, profile: dict | None = None) -> list[dict]:
+    """LinkedIn, GitHub and your site, from profile.toml.
+
+    These are what every CV carries, whatever the base PDF happened to have:
+    profile.toml is the one place you keep them, and it is already what fills
+    the same fields on an employer's form.
+    """
+    profile = profile if profile is not None else pc.load_profile()
+    ident = profile.get((lang or "en").lower()) or profile.get("base") or {}
+    out = []
+    for key, label in (("linkedin", "LinkedIn"), ("github", "GitHub"),
+                       ("portfolio", "Portfolio")):
+        u = (ident.get(key) or "").strip()
+        if u:
+            out.append({"label": label, "url": _href(u)})
+    return out
+
+
+def ensure_links(doc: dict, links: list[dict]) -> dict:
+    """Put your links on this CV, and give every one of them a word to click.
+
+    An address you keep in profile.toml wins over whatever the base PDF had,
+    so the same three links appear identically on every CV you send. Links the
+    base PDF has and profile.toml does not are kept as they are.
+    """
+    have = doc.setdefault("contact", {}).setdefault("links", [])
+    for l in links:
+        k = link_kind(l["url"])
+        slot = (next((x for x in have if x.get("url") and link_kind(x["url"]) == k), None)
+                or next((x for x in have if not x.get("url")
+                         and _label_kind(x.get("label")) == k), None))
+        if slot is None:
+            have.append(dict(l))
+        else:
+            slot["url"] = l["url"]
+            if not slot.get("label"):
+                slot["label"] = l["label"]
+    # an address with no word to click is unusable once the label is what shows
+    for x in have:
+        if x.get("url"):
+            x["url"] = _href(x["url"])
+            if not x.get("label"):
+                x["label"] = LINK_LABELS[link_kind(x["url"])]
+    return doc
 
 
 def attach_links(doc: dict, pdf: Path) -> dict:
@@ -518,6 +588,16 @@ def verify(pdf: Path, doc: dict, report: list[dict], max_pages: int = 2) -> list
         probe = _norm(_strip_label(r["suggested"]))[:40]
         if probe and probe not in nt and not all(w in nt for w in _words(probe)[:5]):
             probs.append(f"applied edit not readable in the PDF: {r['suggested'][:60]}")
+    # A word that looks like a link but carries no annotation is worse than no
+    # link at all: it reads as an address the recruiter cannot follow.
+    want = [l["url"] for l in (doc.get("contact") or {}).get("links") or [] if l.get("url")]
+    if want:
+        # the renderer normalises an address on its way into the annotation:
+        # a bare host comes back with a trailing slash, so compare loosely
+        got = {_same_url(u) for u in pdf_links(pdf)}
+        missing = [u for u in want if _same_url(u) not in got]
+        if missing:
+            probs.append("not clickable in the PDF: " + ", ".join(missing[:3]))
     pages = page_count(pdf)
     if pages > max_pages:
         probs.append(f"{pages} pages, over the {max_pages}-page target even at "
@@ -554,9 +634,15 @@ def tailor_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str, *,
     stage = "student" if variant.startswith("1-") else "graduate"
     doc = no_em_dash(reorder(doc, stage))
     report = [{**r, "suggested": no_em_dash(r.get("suggested", ""))} for r in report]
+    plinks = profile_links(lang)
+    if not plinks:
+        log("  note   profile.toml has no linkedin/github/portfolio: this CV keeps "
+            "only the links its base PDF had")
+    doc = ensure_links(doc, plinks)
     photo = photo_uri(pcfg, lang)
     doc.setdefault("show_photo", photo is not None)
     doc.setdefault("style", pcfg.cv_style)
+    doc.setdefault("link_style", pcfg.link_style)
     out = output_path(pcfg, cfg, job, variant, lang)
     pages, step = render_fitted(doc, lang, out, find_chrome(pcfg),
                                 max_pages=pcfg.max_pages, photo=photo)
@@ -645,6 +731,8 @@ def save_cv(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str,
     lang = meta.get("lang", "fr")
     if meta.get("base_cv"):
         doc = attach_links(doc, cfg.cv_root / meta["base_cv"])
+    doc = ensure_links(doc, profile_links(lang))
+    doc.setdefault("link_style", pcfg.link_style)
     doc = no_em_dash(doc)
     pages, step = render_fitted(doc, lang, pdf, find_chrome(pcfg), max_pages=pcfg.max_pages,
                                 photo=photo_uri(pcfg, lang))

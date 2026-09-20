@@ -54,6 +54,9 @@ class PipelineConfig:
     photo: Path | None = None
     photo_langs: list[str] = field(default_factory=list)
     cv_style: str = "calibri"
+    # "label": the contact line shows LinkedIn / GitHub / Portfolio, each word
+    # clickable. "url": it shows the address itself, also clickable.
+    link_style: str = "label"
 
     submit_channel: str = "chrome"
     submit_hosts: list[str] = field(default_factory=list)
@@ -113,6 +116,7 @@ def load(path: Path | None = None) -> PipelineConfig:
         photo=_abs(tl["photo"]) if tl.get("photo") else None,
         photo_langs=[x.lower() for x in tl.get("photo_langs", ["fr", "en"])],
         cv_style=tl.get("style", "calibri"),
+        link_style=tl.get("link_style", "label"),
         submit_channel=sm.get("browser_channel", "chrome"),
         submit_hosts=[h.lower() for h in sm.get("allowed_hosts", [
             "boards.greenhouse.io", "job-boards.greenhouse.io",

@@ -455,14 +455,63 @@ def main():
             emb = sp.run(["pdffonts", str(out)], capture_output=True, text=True).stdout
             check(f"{style}: the real typeface is embedded, not a fallback",
                   face in emb and "Tinos" not in emb, emb.splitlines()[2:4])
+        # default: the word is the link, the address is behind it
         out = tmp / "contact.pdf"
         T.html_to_pdf(T.render_html(pro, "en"), out, chrome)
         txt = cr.pdf_text(out, layout=False)
         check("no markup leaks into the contact line", "<span" not in txt and "&" not in txt)
+        check("the contact line shows the word, not the address",
+              all(w in txt for w in ["LinkedIn", "GitHub", "Portfolio"])
+              and "linkedin.com/in/" not in txt, txt[:200])
+        urls3 = T.pdf_links(out)
+        check("each word carries its real address, clickable in the PDF",
+              sorted(urls3) == sorted(l["url"] for l in pro["contact"]["links"]), urls3)
+        check("verification confirms every link made it into the PDF",
+              T.verify(out, pro, [], max_pages=1) == [])
+        # Chrome writes a bare host into the annotation with a trailing slash
+        loose = {**pro, "contact": {**pro["contact"], "links": [
+            {"label": "Portfolio", "url": "https://ada-lovelace.vercel.app"}]}}
+        check("a trailing slash the renderer added is not a missing link",
+              T.verify(out, loose, [], max_pages=1) == [])
+        gone = {**pro, "contact": {**pro["contact"], "links": pro["contact"]["links"]
+                                   + [{"label": "Blog", "url": "https://nowhere.example/"}]}}
+        check("a link that never reached the PDF is reported",
+              any("not clickable" in p for p in T.verify(out, gone, [], max_pages=1)))
+
+        # link_style = "url" still prints the address, and the old hyphen bug
+        # (pdftotext splitting a URL on its dash) must stay fixed there
+        out_u = tmp / "contact-url.pdf"
+        T.html_to_pdf(T.render_html({**pro, "link_style": "url"}, "en"), out_u, chrome)
+        txt_u = cr.pdf_text(out_u, layout=False)
         check("addresses are read whole, never split on their hyphen",
-              all(u in txt for u in ["linkedin.com/in/ada-lovelace-853a011a5",
-                                     "ada-lovelace.vercel.app", "github.com/ADA-LOVELACE"]))
-        check("links stay clickable in the PDF", len(T.pdf_links(out)) == 3)
+              all(u in txt_u for u in ["linkedin.com/in/ada-lovelace-853a011a5",
+                                       "ada-lovelace.vercel.app", "github.com/ADA-LOVELACE"]))
+        check("links stay clickable in url mode too", len(T.pdf_links(out_u)) == 3)
+
+    # every CV carries your links, whatever the base PDF had
+    prof = {"base": {"linkedin": "linkedin.com/in/souhaib", "github": "https://github.com/s",
+                     "portfolio": "souhaib.dev"}, "en": {}, "fr": {}, "answers": []}
+    prof["en"] = prof["fr"] = prof["base"]
+    pl = T.profile_links("en", prof)
+    check("a bare host gets a scheme, or it makes no clickable annotation",
+          [l["url"] for l in pl] == ["https://linkedin.com/in/souhaib",
+                                     "https://github.com/s", "https://souhaib.dev"], pl)
+    bare = T.ensure_links({}, pl)
+    check("a CV with no links at all gets all three",
+          [l["label"] for l in bare["contact"]["links"]] == ["LinkedIn", "GitHub", "Portfolio"])
+    stale = T.ensure_links(
+        {"contact": {"links": [{"label": "LinkedIn", "url": "https://linkedin.com/in/old"}]}}, pl)
+    check("profile.toml wins over a stale address in the base CV",
+          stale["contact"]["links"][0]["url"] == "https://linkedin.com/in/souhaib")
+    check("…and the other two are added, not duplicated",
+          len(stale["contact"]["links"]) == 3)
+    kept = T.ensure_links(
+        {"contact": {"links": [{"label": "Kaggle", "url": "https://kaggle.com/x"}]}}, [])
+    check("a link only the base CV has is kept", len(kept["contact"]["links"]) == 1)
+    unlabelled = T.ensure_links(
+        {"contact": {"links": [{"url": "https://github.com/x"}]}}, [])
+    check("an address with no word to click is given one",
+          unlabelled["contact"]["links"][0]["label"] == "GitHub")
     doc_l = {"contact": {"links": [{"label": "LinkedIn"}, {"label": "Protfolio"}]}}
     real_links = T.pdf_links
     T.pdf_links = lambda p: ["https://www.linkedin.com/in/x", "https://x.vercel.app/",

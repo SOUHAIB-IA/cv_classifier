@@ -152,6 +152,23 @@ function field(p, value, opts = {}) {
   return `<input data-p="${pj}" class="${cls}" title="${title}" value="${esc(value || "")}" placeholder="${esc(opts.ph || "")}">`;
 }
 
+// The word on the left is what the CV shows; the address on the right is where
+// it goes. They come from profile.toml, so the same three are on every CV, and
+// you can still change them here for one application.
+function linksEditor(c) {
+  const links = c.links || (c.links = []);
+  return `<label class="f">Liens cliquables</label>
+    <div class="list">${links.map((l, li) => `
+      <div class="grid" style="grid-template-columns:1fr 2.6fr auto;gap:6px">
+        ${field(["contact", "links", li, "label"], l.label, { ph: "LinkedIn" })}
+        ${field(["contact", "links", li, "url"], l.url, { ph: "https://…" })}
+        <button class="ico danger" data-op="lk-del" data-li="${li}" title="Retirer">✕</button>
+      </div>`).join("")}</div>
+    <div class="legend" style="margin-top:4px">Le mot de gauche s'affiche sur le CV
+      et renvoie vers l'adresse de droite, cliquable jusque dans le PDF.</div>
+    <button class="small" style="margin-top:6px" data-op="lk-add">+ lien</button>`;
+}
+
 function renderEditor() {
   if (!doc) { $("b-save").disabled = true; return; }
   $("b-save").disabled = false;
@@ -174,6 +191,7 @@ function renderEditor() {
       <div><label class="f">Téléphone</label>${field(["contact", "phone"], c.phone)}</div>
       <div><label class="f">Lieu</label>${field(["contact", "location"], c.location)}</div>
     </div>
+    ${linksEditor(c)}
     <label class="f">Profil</label>${field(["summary"], doc.summary, { area: true, rows: 6 })}`;
 
   (doc.sections || []).forEach((s, si) => {
@@ -237,6 +255,9 @@ $("editor").addEventListener("click", ev => {
   const b = ev.target.closest("[data-op]");
   if (!b) return;
   const { op } = b.dataset, si = +b.dataset.si, ii = +b.dataset.ii, bi = +b.dataset.bi;
+  const li = +b.dataset.li;
+  if (op === "lk-del") (doc.contact.links || []).splice(li, 1);
+  if (op === "lk-add") (doc.contact.links ||= []).push({ label: "", url: "" });
   const secs = doc.sections;
   const swap = (arr, i, j) => { if (j >= 0 && j < arr.length) [arr[i], arr[j]] = [arr[j], arr[i]]; };
   const bul = () => secs[si].items[ii].bullets;
