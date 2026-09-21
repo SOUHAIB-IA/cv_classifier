@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -66,6 +68,43 @@ RESUME = ["#resume", "input[type='file'][name='resume']", "#_systemfield_resume"
 CAPTCHA = ["iframe[src*='recaptcha']", "iframe[src*='hcaptcha']",
            "iframe[src*='challenges.cloudflare.com']", ".g-recaptcha", ".h-captcha",
            ".cf-turnstile"]
+
+
+class NoDisplay(RuntimeError):
+    pass
+
+
+# The portal runs as a systemd user service, started at login before the
+# desktop publishes DISPLAY and XAUTHORITY to the user manager. The service
+# process therefore never receives them, and a headed Chrome launched from it
+# fails with "you launched a headed browser without having a XServer running"
+# even though the session is perfectly fine. The manager has the values by the
+# time a window is actually wanted, so ask it then rather than trusting the
+# environment this process was started with.
+DISPLAY_KEYS = ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR")
+
+
+def display_env() -> dict:
+    """The graphical session's display variables. Raises if there is none."""
+    env = {k: os.environ[k] for k in DISPLAY_KEYS if os.environ.get(k)}
+    if not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
+        try:
+            out = subprocess.run(["systemctl", "--user", "show-environment"],
+                                 capture_output=True, text=True, timeout=10).stdout
+        except Exception:
+            out = ""
+        for line in out.splitlines():
+            k, _, v = line.partition("=")
+            if k in DISPLAY_KEYS and v:
+                env.setdefault(k, v)
+    if not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
+        raise NoDisplay(
+            "aucun affichage graphique : la fenêtre du formulaire ne peut pas "
+            "s'ouvrir. Ce mode a besoin d'une session graphique ouverte, parce "
+            "que la fenêtre est là pour que tu la lises. Sur une machine sans "
+            "écran, ouvre l'annonce toi-même et postule à la main.")
+    os.environ.update(env)          # the next launch finds it without asking
+    return env
 
 
 def tier(url: str, allowed: list[str]) -> int:
@@ -274,12 +313,14 @@ def open_and_fill(pcfg: pc.PipelineConfig, apply_url: str, ident: dict, cv: Path
 
     This function does not submit. There is no click anywhere in this module.
     """
+    disp = display_env()                              # before Playwright starts
     from playwright.sync_api import sync_playwright
     user_dir = ROOT / "data" / "browser-profile"      # separate from your own Chrome
     rep: dict = {}
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             str(user_dir), channel=pcfg.submit_channel, headless=False,
+            env={**os.environ, **disp},
             viewport={"width": 1280, "height": 900})
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(apply_url, wait_until="domcontentloaded", timeout=60_000)

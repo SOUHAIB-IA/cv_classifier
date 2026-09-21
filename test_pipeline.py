@@ -280,6 +280,42 @@ def main():
                       ("https://evil.jobs.lever.co.attacker.com/x", 2)]:
         check(f"tier {want}: {url[:44]}", SUB.tier(url, pcfg.submit_hosts) == want)
 
+    # the window needs a display, and the service is started without one
+    import os as _os
+    keep = {k: _os.environ.get(k) for k in SUB.DISPLAY_KEYS}
+    real_run = SUB.subprocess.run
+    try:
+        _os.environ["DISPLAY"] = ":9"
+        check("a display in the environment is used as is",
+              SUB.display_env().get("DISPLAY") == ":9")
+        # what the portal actually looks like: started before the desktop
+        # published DISPLAY, so its own environment has none
+        for k in SUB.DISPLAY_KEYS:
+            _os.environ.pop(k, None)
+        SUB.subprocess.run = lambda *a, **k: type(
+            "R", (), {"stdout": "LANG=C\nDISPLAY=:7\nXAUTHORITY=/run/x\n"})()
+        got = SUB.display_env()
+        check("with none, the session's display is read from systemd",
+              got.get("DISPLAY") == ":7" and got.get("XAUTHORITY") == "/run/x", got)
+        check("…and kept, so the next window costs no second lookup",
+              _os.environ.get("DISPLAY") == ":7")
+        for k in SUB.DISPLAY_KEYS:
+            _os.environ.pop(k, None)
+        SUB.subprocess.run = lambda *a, **k: type("R", (), {"stdout": "LANG=C\n"})()
+        try:
+            SUB.display_env()
+            check("a machine with no display says so in plain words", False)
+        except SUB.NoDisplay as e:
+            check("a machine with no display says so in plain words",
+                  "affichage graphique" in str(e))
+    finally:
+        SUB.subprocess.run = real_run
+        for k, v in keep.items():
+            if v is None:
+                _os.environ.pop(k, None)
+            else:
+                _os.environ[k] = v
+
     # answers come from you and only from you
     prof = pc.load_profile(HERE / "profile.example.toml")
     ans = prof["answers"]

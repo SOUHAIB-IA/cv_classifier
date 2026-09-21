@@ -28,6 +28,7 @@ Off unless [autoapply] enabled = true in pipeline.toml.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -168,11 +169,13 @@ def run(pcfg: pc.PipelineConfig, db: DB, job_id: str, *, rehearse: bool = False,
     answers = profile.get("answers", [])
     rehearse = rehearse or pcfg.auto_rehearse
 
+    disp = SUB.display_env()                          # before Playwright starts
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             str(ROOT / "data" / "browser-profile"), channel=pcfg.submit_channel,
-            headless=False, viewport={"width": 1280, "height": 900})
+            headless=False, env={**os.environ, **disp},
+            viewport={"width": 1280, "height": 900})
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         try:
             page.goto(job["apply_url"], wait_until="domcontentloaded", timeout=60_000)
