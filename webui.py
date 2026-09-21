@@ -32,6 +32,7 @@ from pipeline import submit as SUB
 from pipeline import autoapply as AA
 from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
+import settings as ST
 
 HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -41,6 +42,7 @@ _run: dict = {"proc": None}
 # One pre-fill at a time, per job: the browser window is the shared resource.
 _prefill: dict = {}
 _auto: dict = {}
+_test: dict = {}
 
 
 def _ctx():
@@ -121,6 +123,87 @@ def state():
             "ORDER BY last_fetched DESC")],
         "log": log_tail,
     })
+
+
+# ---------------------------------------------------------------- settings --
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    return templates.TemplateResponse(request, "settings.html", {})
+
+
+@router.get("/api/settings")
+def settings_read():
+    pcfg, cfg, db = _ctx()
+    return JSONResponse(ST.schema(cfg, pcfg))
+
+
+@router.post("/api/settings")
+def settings_write(payload: dict, x_cv_router: str | None = Header(default=None)):
+    """Write the changed settings back into the TOML files.
+
+    _ctx() reloads both files on every request, so a saved setting is live at
+    once for this app. The watcher is a separate long-running process and has
+    to be restarted to see them: /api/settings/restart does that.
+    """
+    _guard(x_cv_router)
+    try:
+        changed = ST.write(payload.get("changes") or {})
+    except ST.SettingsError as e:
+        raise HTTPException(400, str(e))
+    pcfg, cfg, db = _ctx()
+    db.event("settings", None, changed=changed)
+    return {"changed": changed, "values": ST.current()}
+
+
+@router.post("/api/settings/key")
+def settings_key(payload: dict, x_cv_router: str | None = Header(default=None)):
+    """Store the API key in its own file, owner-readable only. Never read back."""
+    _guard(x_cv_router)
+    pcfg, cfg, db = _ctx()
+    try:
+        return ST.save_key(cfg, payload.get("key", ""))
+    except ST.SettingsError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/api/settings/test")
+def settings_test_state():
+    return _test.get("state") or {"state": "idle"}
+
+
+@router.post("/api/settings/test")
+def settings_test(x_cv_router: str | None = Header(default=None)):
+    """One real call on the configured backend. A claude_cli call takes a
+    while, so it runs in a thread and the page polls, as elsewhere here."""
+    _guard(x_cv_router)
+    if (_test.get("state") or {}).get("state") == "running":
+        return _test["state"]
+    _test["state"] = {"state": "running"}
+
+    def work():
+        pcfg, cfg, db = _ctx()
+        try:
+            _test["state"] = {"state": "done", **ST.test_backend(cfg)}
+        except Exception as e:
+            _test["state"] = {"state": "done", "ok": False, "error": str(e)[:300]}
+
+    threading.Thread(target=work, daemon=True).start()
+    return _test["state"]
+
+
+@router.post("/api/settings/restart")
+def settings_restart(x_cv_router: str | None = Header(default=None)):
+    """Restart the background watcher so it picks the new settings up.
+
+    Deliberately not the portal: that is the process answering this request.
+    It rereads both files per request and needs no restart.
+    """
+    _guard(x_cv_router)
+    r = subprocess.run(["systemctl", "--user", "restart", "cv-router-watcher.service"],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise HTTPException(400, (r.stderr or r.stdout).strip()[:200] or "échec")
+    return {"ok": True}
 
 
 @router.get("/api/pipeline/charts")

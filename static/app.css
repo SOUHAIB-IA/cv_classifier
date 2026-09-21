@@ -178,3 +178,61 @@ details > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .gate .ok { color: var(--muted); }
 .send .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
 .live-state { font-size: 12.5px; color: var(--muted); display: flex; gap: 7px; align-items: center; }
+
+/* ---------------------------------------------------------------- settings -- */
+/* Each setting is a block, not a table row: the explanation under the label is
+   what makes the page usable by someone who would never open a TOML file. */
+.set { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.set:last-child { border-bottom: 0; padding-bottom: 2px; }
+.set:first-child { padding-top: 2px; }
+.slab { font-weight: 600; font-size: 13.5px; display: flex; gap: 8px; align-items: center; }
+.badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+         background: var(--info-soft); color: var(--info); padding: 1px 6px; border-radius: 4px; }
+.set.edited .slab { color: var(--info); }
+.fhelp { color: var(--muted); font-size: 12.5px; margin: 3px 0 9px; max-width: 62ch; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.opt { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; padding: 9px 12px;
+       border: 1px solid var(--line); border-radius: 9px; min-width: 210px; flex: 1 1 210px; }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.opt input { width: auto; margin-top: 2px; flex: none; }
+.opt b { display: block; font-size: 13px; }
+.opt .note { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+.opt.on .note { color: color-mix(in srgb, var(--accent) 75%, var(--ink)); }
+/* a switch, because "envoyer sans me demander" deserves to look like a switch */
+.sw { display: inline-flex; gap: 10px; align-items: center; cursor: pointer; }
+.sw input { position: absolute; opacity: 0; width: 0; }
+.sw .track { width: 40px; height: 23px; border-radius: 23px; background: var(--line);
+             position: relative; transition: background .15s; flex: none; }
+.sw .knob { position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%;
+            background: var(--card); transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.sw input:checked + .track { background: var(--accent); }
+.sw input:checked + .track .knob { transform: translateX(17px); }
+.sw input:focus-visible + .track { outline: 2px solid var(--info); outline-offset: 2px; }
+.swtxt { font-size: 13px; color: var(--muted); }
+.num { display: flex; gap: 8px; align-items: center; }
+.num input { max-width: 150px; }
+.num .unit { color: var(--muted); font-size: 12.5px; }
+.tagbox { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 6px;
+          border: 1px solid var(--line); border-radius: 7px; background: var(--bg); }
+.tg { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; padding: 2px 4px 2px 8px;
+      border-radius: 20px; background: var(--card); border: 1px solid var(--line); }
+.tg button { border: 0; background: none; padding: 0 3px; color: var(--muted); font-size: 12px;
+             line-height: 1; border-radius: 3px; }
+.tg button:hover { color: var(--bad); }
+.tagin { border: 0; background: none; flex: 1 1 150px; min-width: 120px; padding: 4px; }
+.okline, .noline { font-size: 12.5px; display: flex; gap: 7px; align-items: baseline; }
+.okline { color: var(--muted); } .okline b { color: var(--accent); }
+.noline { color: var(--ink); } .noline b { color: var(--bad); }
+code { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line);
+       border-radius: 4px; padding: 1px 5px; }
+
+/* --------------------------------------------------- keyboard and motion -- */
+/* Without these, tabbing through the app shows nothing, and the live dot keeps
+   pulsing for someone who asked their system for less motion. */
+:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; border-radius: 4px; }
+a:focus-visible, button:focus-visible, .btn:focus-visible,
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                           transition-duration: .01ms !important; }
+}

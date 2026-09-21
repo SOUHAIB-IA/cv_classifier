@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import tempfile
+import tomllib
 from dataclasses import replace
 from pathlib import Path
 
@@ -33,6 +34,15 @@ from pipeline.textutil import html_to_text
 
 HERE = Path(__file__).resolve().parent
 ok = True
+
+
+def _refuses(ST, field, value, word) -> bool:
+    """A bad value is refused, and the refusal says something a person can act on."""
+    try:
+        ST.coerce(field, value)
+        return False
+    except ST.SettingsError as e:
+        return word in str(e)
 
 
 def check(label, cond, detail=""):
@@ -347,6 +357,12 @@ def main():
     am = db.one("SELECT * FROM matches WHERE job_id='ashby:0'")
     check("off by default, nothing is eligible",
           any("désactiv" in b for b in AA.pre_gate(pcfg, db, aj, aa, am)))
+    # The shipped default must stay off. Enabling it for a screenshot once and
+    # leaving it on is exactly the mistake this catches.
+    shipped = tomllib.loads((HERE / "pipeline.example.toml").read_text())
+    check("the shipped config ships with sending switched off",
+          shipped["autoapply"]["enabled"] is False)
+    check("…and requires a CV you have read", shipped["autoapply"]["require_validated_cv"])
     # a copy, never the shared pcfg: the web-interface checks below read the
     # same object and would see auto-apply switched on
     g = replace(pcfg, auto_apply=True, auto_min_fit=0, auto_min_ats=0,
@@ -392,6 +408,47 @@ def main():
     check("two explicit send buttons are still an ambiguity",
           len([t for t in ["Submit application", "Send application"]
                if AA.EXPLICIT_RX.search(t)]) == 2)
+
+    # ----------------------------------------------------------------- settings
+    # patch() and coerce() only: write() edits the real config files, and a
+    # test suite must never touch those.
+    print("\n7c. settings written back into the TOML files")
+    import settings as ST
+    for name, path in ST.FILES.items():
+        txt = path.read_text()
+        check(f"{name}.toml survives an empty patch untouched",
+              ST.patch(txt, {}).strip() == txt.strip())
+    txt = (HERE / "pipeline.example.toml").read_text()
+    out = ST.patch(txt, {"autoapply.enabled": True, "autoapply.min_fit": 75,
+                         "prefilter.title_exclude": ["senior", "lead"],
+                         "submit.allowed_hosts": ["only.example"]})
+    d = tomllib.loads(out)
+    check("a boolean is written as TOML, not Python",
+          "enabled = true" in out and d["autoapply"]["enabled"] is True)
+    check("a number keeps its trailing comment",
+          [l for l in out.splitlines() if l.startswith("min_fit")][0].endswith("you decide"))
+    check("a list is replaced wholesale", d["prefilter"]["title_exclude"] == ["senior", "lead"])
+    check("a list spread over several lines is replaced whole",
+          d["submit"]["allowed_hosts"] == ["only.example"])
+    check("the comments that document the file are still there",
+          out.count("#") == txt.count("#"))
+    check("a key the section does not have yet is added",
+          tomllib.loads(ST.patch(txt, {"tailor.brand_new": 3}))["tailor"]["brand_new"] == 3)
+    check("a number out of range is refused with a readable reason",
+          _refuses(ST, ST.BY_ID["autoapply.min_fit"], 999, "entre"))
+    check("a choice that is not on the list is refused",
+          _refuses(ST, ST.BY_ID["ai.backend"], "gpt", "choix"))
+    check("text typed into a number field is refused",
+          _refuses(ST, ST.BY_ID["ai.timeout"], "vite", "nombre"))
+    check("a tag list accepts commas as well as a real list",
+          ST.coerce(ST.BY_ID["prefilter.title_include"], "ai, ml ,  data") == ["ai", "ml", "data"])
+    check("every field the page can show has a label and a kind",
+          all(x.label and x.kind in ("choice", "toggle", "number", "text", "tags")
+              for x in ST.BY_ID.values()))
+    check("every choice field offers options", all(
+        x.options for x in ST.BY_ID.values() if x.kind == "choice"))
+    check("every 'depends' points at a field that exists",
+        all(x.depends.split("=")[0] in ST.BY_ID for x in ST.BY_ID.values() if x.depends))
 
     # ------------------------------------------------------------------ tracker
     print("\n8. tracker")

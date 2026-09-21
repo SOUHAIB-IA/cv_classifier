@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Réglages · CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<nav class="top">
+  <b>CV Router</b>
+  <a href="/">Analyser une offre</a>
+  <a href="/pipeline">Pipeline</a>
+  <a href="/settings" class="on">Réglages</a>
+  <span class="sp"></span>
+  <span class="dirty" id="dirty"></span>
+  <button id="b-save" class="primary" disabled>Enregistrer</button>
+</nav>
+<main>
+  <h1>Réglages</h1>
+  <div class="sub">Tout se règle ici. Rien n'est enregistré tant que tu n'as pas cliqué
+    sur « Enregistrer », et une valeur qui rendrait le système inutilisable est refusée
+    avant d'être écrite.</div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="groups"></div>
+
+  <div class="card" style="margin-top:20px">
+    <h2>Les fichiers derrière ces réglages</h2>
+    <div class="how">
+      <p>Ces réglages sont écrits dans <code>config.toml</code> et <code>pipeline.toml</code>,
+        que tu peux toujours ouvrir à la main. Tes informations personnelles vivent ailleurs,
+        dans <code>profile.toml</code>, et ta clé API dans un fichier séparé lisible par toi seul.
+        Aucun des trois n'est suivi par git.</p>
+      <p id="profile-state" style="margin-top:8px"></p>
+      <div class="acts" style="margin-top:10px">
+        <button id="b-restart">Redémarrer la surveillance des téléchargements</button>
+        <span class="sub">À faire après avoir changé le cerveau : ce programme-là tourne
+          en fond et lit les réglages à son démarrage.</span>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script src="/static/settings.js"></script>
+</body>
+</html>
