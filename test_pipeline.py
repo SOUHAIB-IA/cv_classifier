@@ -45,6 +45,14 @@ def _refuses(ST, field, value, word) -> bool:
         return word in str(e)
 
 
+def _refuses_key(ST, cfg, key, word) -> bool:
+    try:
+        ST.save_key(cfg, key)
+        return False
+    except ST.SettingsError as e:
+        return word in str(e)
+
+
 def check(label, cond, detail=""):
     global ok
     print(("  PASS  " if cond else "  FAIL  ") + label + (f"   ({detail})" if detail and not cond else ""))
@@ -443,10 +451,43 @@ def main():
     check("a tag list accepts commas as well as a real list",
           ST.coerce(ST.BY_ID["prefilter.title_include"], "ai, ml ,  data") == ["ai", "ml", "data"])
     check("every field the page can show has a label and a kind",
-          all(x.label and x.kind in ("choice", "toggle", "number", "text", "tags")
+          all(x.label and x.kind in ("choice", "toggle", "number", "text", "tags", "model")
               for x in ST.BY_ID.values()))
     check("every choice field offers options", all(
         x.options for x in ST.BY_ID.values() if x.kind == "choice"))
+    check("a dotted section is read and written like any other",
+          isinstance(ST.current()["sources.ashby.boards"], list)
+          and tomllib.loads(ST.patch(txt, {"sources.ashby.boards": ["x=X"]})
+                            )["sources"]["ashby"]["boards"] == ["x=X"])
+
+    # any provider's key, not only Anthropic's
+    check("every provider offers a label and somewhere to get a key",
+          all(p["label"] and ("keys_at" in p) for p in cr.PROVIDERS.values()))
+    check("every provider but Anthropic and custom has a base address",
+          all(p["base"] for k, p in cr.PROVIDERS.items()
+              if k not in ("anthropic", "custom")))
+    check("the provider list is what the page offers",
+          [o[0] for o in ST.BY_ID["ai.provider"].options] == list(cr.PROVIDERS))
+    probe_cfg = replace(cfg, backend="api", provider="groq", base_url="")
+    check("a provider's own address is used when none is given",
+          cr.provider_base(probe_cfg) == "https://api.groq.com/openai/v1")
+    check("a base address you set wins over the provider's",
+          cr.provider_base(replace(probe_cfg, base_url="http://x/v1/")) == "http://x/v1")
+    try:
+        cr._ask_compatible(replace(cfg, provider="custom", base_url=""), "s", "u", 10)
+        check("a custom provider with no address says so", False)
+    except cr.AIError as e:
+        check("a custom provider with no address says so", "adresse" in str(e))
+    ollama = replace(cfg, provider="ollama", key_file=tmp / "nokey")
+    check("a local model needs no key", cr.PROVIDERS["ollama"]["no_key"] is True
+          and ollama.api_key is None)
+    check("a key for the wrong provider is caught",
+          _refuses_key(ST, replace(cfg, provider="groq"), "sk-ant-xyz", "gsk_"))
+    check("…and the right one is accepted",
+          ST.save_key(replace(cfg, provider="groq", key_file=tmp / "k"),
+                      "gsk_abcdef1234")["hint"] == "…1234")
+    check("the key file is readable by you alone",
+          oct((tmp / "k").stat().st_mode)[-3:] == "600")
     check("every 'depends' points at a field that exists",
         all(x.depends.split("=")[0] in ST.BY_ID for x in ST.BY_ID.values() if x.depends))
 

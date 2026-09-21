@@ -80,6 +80,8 @@ class Config:
     index_file: Path
     log_file: Path
     backend: str
+    provider: str          # anthropic | openai | google | ... | custom
+    base_url: str          # "" = the provider's own address
     model: str
     cli_model: str
     claude_bin: str
@@ -108,6 +110,16 @@ class Config:
 
     @property
     def api_key(self) -> str | None:
+        """The key for whichever provider is selected.
+
+        ANTHROPIC_API_KEY still wins for Anthropic, because that is the variable
+        the SDK and every other tool already read. For the others the key lives
+        in key_file, so switching provider is a key change, not an env change.
+        """
+        if self.provider != "anthropic":
+            if self.key_file.is_file():
+                return self.key_file.read_text().strip() or None
+            return None
         key = os.environ.get("ANTHROPIC_API_KEY")
         if key:
             return key.strip()
@@ -140,6 +152,8 @@ def load_config(path: Path | None = None) -> Config:
         index_file=_abs(p["index_file"]),
         log_file=_abs(p["log_file"]),
         backend=a.get("backend", "claude_cli"),
+        provider=a.get("provider", "anthropic"),
+        base_url=a.get("base_url", ""),
         model=a["model"],
         cli_model=a.get("cli_model", "sonnet"),
         claude_bin=a.get("claude_bin", ""),
@@ -584,6 +598,104 @@ def _ask_cli(cfg: Config, system: str, user: str, timeout: int | None = None,
     return r.stdout
 
 
+# Any provider with an OpenAI-compatible /chat/completions endpoint works, which
+# is nearly all of them. base_url is what distinguishes them; the request body
+# is the same everywhere. Model names move faster than this table, so they are
+# a suggestion the settings page lets you overwrite, and the test button is what
+# confirms one exists.
+#
+# A smaller or cheaper model sorts CVs measurably worse: haiku was tried here
+# and kept the student/graduate distinction on 3 CVs out of 4 where sonnet kept
+# 4 of 4. The saving is real and so is the cost in accuracy.
+PROVIDERS: dict[str, dict] = {
+    "anthropic": {"label": "Anthropic (Claude)", "base": "",
+                  "model": "claude-sonnet-5", "prefix": "sk-ant-",
+                  "keys_at": "console.anthropic.com"},
+    "openai": {"label": "OpenAI", "base": "https://api.openai.com/v1",
+               "model": "gpt-4o-mini", "prefix": "sk-",
+               "keys_at": "platform.openai.com/api-keys"},
+    "google": {"label": "Google Gemini",
+               "base": "https://generativelanguage.googleapis.com/v1beta/openai",
+               "model": "gemini-2.0-flash", "prefix": "",
+               "keys_at": "aistudio.google.com/apikey"},
+    "mistral": {"label": "Mistral", "base": "https://api.mistral.ai/v1",
+                "model": "mistral-small-latest", "prefix": "",
+                "keys_at": "console.mistral.ai"},
+    "groq": {"label": "Groq", "base": "https://api.groq.com/openai/v1",
+             "model": "llama-3.3-70b-versatile", "prefix": "gsk_",
+             "keys_at": "console.groq.com/keys"},
+    "deepseek": {"label": "DeepSeek", "base": "https://api.deepseek.com/v1",
+                 "model": "deepseek-chat", "prefix": "sk-",
+                 "keys_at": "platform.deepseek.com"},
+    "openrouter": {"label": "OpenRouter (plusieurs modèles, une seule clé)",
+                   "base": "https://openrouter.ai/api/v1",
+                   "model": "openai/gpt-4o-mini", "prefix": "sk-or-",
+                   "keys_at": "openrouter.ai/keys"},
+    "ollama": {"label": "Ollama, sur ta machine", "base": "http://localhost:11434/v1",
+               "model": "llama3.1", "prefix": "", "no_key": True,
+               "keys_at": "aucune clé : le modèle tourne chez toi"},
+    "custom": {"label": "Autre (compatible OpenAI)", "base": "",
+               "model": "", "prefix": "", "keys_at": ""},
+}
+
+
+def provider_base(cfg: "Config") -> str:
+    return (cfg.base_url or PROVIDERS.get(cfg.provider, {}).get("base", "")).rstrip("/")
+
+
+# -- backend C: anything speaking the OpenAI chat-completions shape ----------
+def _ask_compatible(cfg: "Config", system: str, user: str, max_tokens: int | None,
+                    model: str | None = None) -> str:
+    """One chat completion over plain HTTP.
+
+    httpx rather than a provider SDK on purpose: the endpoint is the same for
+    every provider here, and one shared shape is what makes "any key" possible
+    without a dependency per vendor.
+
+    No response_format is sent. Several of these providers reject it, and
+    ask_json already pulls the object out of whatever prose comes back.
+    """
+    import httpx
+    base = provider_base(cfg)
+    if not base:
+        raise AIError("aucune adresse d'API : choisis un fournisseur, ou donne "
+                      "l'adresse de base de celui que tu utilises")
+    info = PROVIDERS.get(cfg.provider, {})
+    key = cfg.api_key
+    if not key and not info.get("no_key"):
+        raise AIError(f"aucune clé enregistrée pour {info.get('label', cfg.provider)}")
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    payload = {
+        "model": model or cfg.model,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content":
+                      f"{user}\n\nRespond with the JSON object only."}],
+        "max_tokens": max_tokens or cfg.max_tokens,
+        "temperature": 0,
+    }
+    try:
+        r = httpx.post(f"{base}/chat/completions", headers=headers, json=payload,
+                       timeout=cfg.timeout)
+    except httpx.RequestError as e:
+        raise AIError(f"{base} injoignable : {e}") from e
+    if r.status_code == 401 or r.status_code == 403:
+        raise AIError("clé refusée par le fournisseur (401) : vérifie-la, et "
+                      "qu'elle appartient bien au fournisseur sélectionné")
+    if r.status_code == 404:
+        raise AIError(f"modèle « {payload['model']} » inconnu chez ce fournisseur, "
+                      f"ou adresse de base incorrecte ({base})")
+    if r.status_code == 429:
+        raise AIError("quota ou limite de débit atteinte chez le fournisseur")
+    if r.status_code >= 400:
+        raise AIError(f"HTTP {r.status_code} : {r.text[:200]}")
+    try:
+        return r.json()["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, ValueError) as e:
+        raise AIError(f"réponse illisible du fournisseur : {r.text[:200]}") from e
+
+
 # -- backend B: the Anthropic API (needs a paid API key, separate from Pro) --
 def _ask_api(cfg: Config, system: str, user: str, max_tokens: int | None,
              model: str | None = None) -> str:
@@ -613,8 +725,10 @@ def ask_json(cfg: Config, system: str, user: str, max_tokens: int | None = None,
     """
     if cfg.backend == "claude_cli":
         body = _ask_cli(cfg, system, user, model=model)
-    else:
+    elif cfg.provider == "anthropic":
         body = _ask_api(cfg, system, user, max_tokens, model=model)
+    else:
+        body = _ask_compatible(cfg, system, user, max_tokens, model=model)
     m = re.search(r"\{.*\}", body.strip(), re.S)
     if not m:
         raise AIError(f"model did not return JSON: {body.strip()[:300]}")

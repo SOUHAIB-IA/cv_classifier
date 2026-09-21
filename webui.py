@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -30,6 +31,7 @@ from pipeline import orchestrate as O
 from pipeline import tailor as T
 from pipeline import submit as SUB
 from pipeline import autoapply as AA
+from pipeline import sources as SRC
 from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 import settings as ST
@@ -161,9 +163,25 @@ def settings_key(payload: dict, x_cv_router: str | None = Header(default=None)):
     _guard(x_cv_router)
     pcfg, cfg, db = _ctx()
     try:
-        return ST.save_key(cfg, payload.get("key", ""))
+        return ST.save_key(cfg, payload.get("key", ""), payload.get("provider"))
     except ST.SettingsError as e:
         raise HTTPException(400, str(e))
+
+
+@router.post("/api/settings/board")
+def settings_board(payload: dict, x_cv_router: str | None = Header(default=None)):
+    """Which platform hosts this company, and how many postings it has now.
+
+    Typing a company slug wrong otherwise costs a 45-minute cycle to discover.
+    """
+    _guard(x_cv_router)
+    slug = (payload.get("board") or "").strip().split("=")[0].lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,60}", slug):
+        raise HTTPException(400, "un identifiant d'entreprise, pas une adresse : "
+                                 "des lettres, des chiffres et des tirets")
+    found = SRC.probe(slug, timeout=15)
+    hits = {k: v for k, v in found.items() if isinstance(v, int) and v > 0}
+    return {"board": slug, "found": found, "hits": hits}
 
 
 @router.get("/api/settings/test")

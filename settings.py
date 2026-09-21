@@ -75,9 +75,25 @@ GROUPS: list[tuple[str, str, list[Field]]] = [
         Field("ai.cli_model", "config", "Modèle", "choice",
               "Sonnet suffit pour trier et adapter un CV.",
               options=CLI_MODELS, depends="ai.backend=claude_cli"),
-        Field("ai.model", "config", "Modèle", "choice",
-              "Les prix sont ceux d'Anthropic, par million de mots-jetons.",
+        Field("ai.provider", "config", "Fournisseur de la clé", "choice",
+              "N'importe quelle clé fait l'affaire. Claude est appelé directement ; "
+              "tous les autres parlent le même dialecte, celui d'OpenAI. "
+              "Un modèle plus petit coûte moins cher et trie moins bien : mesuré "
+              "ici, le plus léger gardait la distinction étudiant / diplômé sur "
+              "3 CV sur 4, contre 4 sur 4 pour le modèle intermédiaire.",
+              options=[(k, v["label"], v["keys_at"]) for k, v in cr.PROVIDERS.items()],
+              depends="ai.backend=api"),
+        # One key in the file, two shapes on screen: Anthropic's models are a
+        # known list with known prices, everyone else's move too fast to pin, so
+        # there it is a text box with the provider's usual name suggested.
+        Field("ai.model", "config", "Modèle", "model",
+              "Le nom exact attendu par ton fournisseur. Les noms changent "
+              "souvent : le bouton « Tester » confirme qu'il existe.",
               options=API_MODELS, depends="ai.backend=api"),
+        Field("ai.base_url", "config", "Adresse de l'API", "text",
+              "Celle de ton fournisseur, jusqu'à /v1 inclus. Laisse vide pour "
+              "utiliser l'adresse habituelle du fournisseur choisi.",
+              depends="ai.provider=custom"),
         Field("ai.timeout", "config", "Temps maximum par appel", "number",
               "Au-delà, l'appel est abandonné. Une évaluation prend une à deux minutes.",
               min=30, max=900, step=10, unit="secondes"),
@@ -116,6 +132,21 @@ GROUPS: list[tuple[str, str, list[Field]]] = [
               "dépense principale du système.", min=1, max=200),
         Field("budget.max_matches_per_run", "pipeline", "Offres évaluées par cycle",
               "number", "Un cycle tourne toutes les 45 minutes.", min=1, max=50),
+    ]),
+    ("sources", "Où chercher", [
+        Field("sources.greenhouse.boards", "pipeline", "Entreprises sur Greenhouse",
+              "tags", "Une étiquette par entreprise, sous la forme "
+              "identifiant=Nom affiché. L'identifiant est ce qui apparaît dans "
+              "l'adresse de leur page emploi. Utilise « Chercher une entreprise » "
+              "ci-dessous si tu ne le connais pas."),
+        Field("sources.lever.boards", "pipeline", "Entreprises sur Lever", "tags"),
+        Field("sources.ashby.boards", "pipeline", "Entreprises sur Ashby", "tags"),
+        Field("sourcing.boards_per_run", "pipeline", "Entreprises interrogées par cycle",
+              "number", "Pour étaler la charge sur la journée plutôt que tout "
+              "demander d'un coup.", min=1, max=100),
+        Field("sourcing.board_min_interval_minutes", "pipeline",
+              "Attendre avant de réinterroger la même entreprise", "number",
+              "", min=10, max=2880, unit="minutes"),
     ]),
     ("search", "Ce que je cherche", [
         Field("prefilter.title_include", "pipeline", "Intitulés qui m'intéressent", "tags",
@@ -267,6 +298,11 @@ def coerce(f: Field, v):
         if f.min is not None and n < f.min or f.max is not None and n > f.max:
             raise SettingsError(f"{f.label} : garde une valeur entre {f.min:g} et {f.max:g}")
         return int(n) if float(n).is_integer() else n
+    if f.kind == "model":
+        v = str(v).strip()
+        if not v:
+            raise SettingsError(f"{f.label} : donne le nom du modèle")
+        return v
     if f.kind == "choice":
         ok = [o[0] for o in f.options or []]
         if v not in ok:
@@ -343,11 +379,20 @@ def key_state(cfg) -> dict:
     return {"set": False, "source": None, "hint": "", "path": str(cfg.key_file)}
 
 
-def save_key(cfg, key: str) -> dict:
-    """Write the key to its own file, readable by you alone."""
+def save_key(cfg, key: str, provider: str | None = None) -> dict:
+    """Write the key to its own file, readable by you alone.
+
+    `provider` is what the page currently has selected, which may not be what
+    is saved yet: someone picks Groq and pastes a Groq key before pressing
+    Enregistrer, and rejecting it for not starting with sk-ant- would be wrong.
+    """
     key = (key or "").strip()
-    if key and not key.startswith("sk-ant-"):
-        raise SettingsError("une clé Anthropic commence par sk-ant-")
+    info = cr.PROVIDERS.get(provider or cfg.provider, {})
+    prefix = info.get("prefix", "")
+    if key and prefix and not key.startswith(prefix):
+        raise SettingsError(
+            f"une clé {info.get('label', '')} commence par {prefix} — "
+            f"vérifie que c'est bien la clé du fournisseur sélectionné")
     cfg.key_file.parent.mkdir(parents=True, exist_ok=True)
     if not key:
         cfg.key_file.unlink(missing_ok=True)
@@ -399,6 +444,7 @@ def schema(cfg, pcfg: pc.PipelineConfig) -> dict:
         "values": current(),
         "key": key_state(cfg),
         "claude_bin": str(binp) if binp else "",
+        "providers": cr.PROVIDERS,
         "profile_ok": bool(pc.load_profile().get("base")),
         "answers": len(pc.load_profile().get("answers", [])),
     }

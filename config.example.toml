@@ -34,6 +34,13 @@ index_model = ""
 index_batch_size = 1
 
 # --- api backend ---
+# Which provider the key belongs to. "anthropic" uses Claude directly; every
+# other one speaks the same OpenAI chat-completions shape, so any of them works
+# with any key: openai | google | mistral | groq | deepseek | openrouter |
+# ollama (runs on your machine, no key) | custom.
+provider   = "anthropic"
+# Only for "custom", or to point a provider somewhere else. "" = its own address.
+base_url   = ""
 model      = "claude-sonnet-5"
 # Read from $ANTHROPIC_API_KEY, else from this file (one line, the key).
 key_file   = "~/.config/cv-router/api_key"
