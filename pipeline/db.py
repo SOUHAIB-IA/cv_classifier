@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS boards (
   PRIMARY KEY (source, board)
 );
 
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS events (
   ts     TEXT NOT NULL,
   kind   TEXT NOT NULL,                     -- source|prefilter|match|route|tailor|submit|error
@@ -174,6 +179,15 @@ class DB:
         self.conn.execute(
             "INSERT INTO events(ts, kind, job_id, detail) VALUES (?,?,?,?)",
             (now(), kind, job_id, json.dumps(detail, ensure_ascii=False)))
+
+    def get_meta(self, key: str) -> str | None:
+        row = self.one("SELECT value FROM meta WHERE key=?", key)
+        return row[0] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO meta(key, value) VALUES (?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
     def matches_today(self) -> int:
         """Jobs sent to the model today (local date) — the daily budget ledger."""

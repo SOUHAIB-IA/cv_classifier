@@ -176,6 +176,30 @@ def main():
 
     O.route(db, pcfg, cfg, match_fn=counted, max_matches=5, log=lambda *a: None)
     check("duplicate guard: same company+title never evaluated again", calls["n"] == 0)
+
+    # Loosening a filter used to change nothing: a posting already dropped was
+    # never looked at again, so widening a location list stranded every earlier
+    # posting it would now accept.
+    far = job(77, company="Faraway", title="Machine Learning Engineer",
+              location="Reykjavik, Iceland")
+    with db.tx():
+        db.upsert_job(far)
+    O.screen(db, pcfg, Screener(pcfg, cfg), log=lambda *a: None)
+    check("a posting outside your places is dropped",
+          db.one("SELECT stage FROM jobs WHERE id=?", far["id"])["stage"] == "filtered")
+    st = O.screen(db, pcfg, Screener(pcfg, cfg), log=lambda *a: None)
+    check("…and an unchanged filter does not re-examine it", st["reconsidered"] == 0)
+    wider = replace(pcfg, location_include=pcfg.location_include + ["iceland"])
+    st = O.screen(db, wider, Screener(wider, cfg), log=lambda *a: None)
+    check("widening the filter reconsiders what it had dropped",
+          st["reconsidered"] > 0 and
+          db.one("SELECT stage FROM jobs WHERE id=?", far["id"])["stage"] == "candidate")
+    check("the filters are remembered, so it happens once and not every run",
+          O.prefilter_sig(wider) == db.get_meta("prefilter_sig")
+          and O.screen(db, wider, Screener(wider, cfg),
+                       log=lambda *a: None)["reconsidered"] == 0)
+    with db.tx():
+        db.set_stage(far["id"], "filtered", status="processed")
     check("dedupe key ignores (H/F) and case",
           dedupe_key("Co0", "ML Engineer A (H/F)") == dedupe_key("co0", "ml engineer a"))
 

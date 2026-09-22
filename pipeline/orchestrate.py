@@ -21,6 +21,7 @@ after MAX_ATTEMPTS it is parked as an error.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 
@@ -55,15 +56,43 @@ def _variant_label(path: str) -> str:
 
 
 # ------------------------------------------------------------------- stages --
+def prefilter_sig(pcfg: pc.PipelineConfig) -> str:
+    """A fingerprint of everything the free screen decides on."""
+    parts = [sorted(pcfg.title_include), sorted(pcfg.title_exclude),
+             sorted(pcfg.location_include), sorted(pcfg.location_exclude),
+             sorted(pcfg.languages), pcfg.max_age_days, pcfg.max_years_required,
+             sorted(pcfg.work_authorization or []), pcfg.prefilter_min]
+    return hashlib.sha256(
+        json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 def screen(db: DB, pcfg: pc.PipelineConfig, scr: Screener, *, dry: bool = False,
            log=print) -> dict:
     """sourced -> filtered | candidate. Free: no model calls.
 
-    Waiting candidates are re-screened too, so tightening a filter in
-    pipeline.toml takes effect on the queue, not only on tomorrow's postings.
+    Waiting candidates are re-screened every run, so tightening a filter takes
+    effect on the queue and not only on tomorrow's postings.
+
+    Loosening one used to do nothing at all: a posting already marked filtered
+    was never looked at again, so widening a location list left every earlier
+    posting it would now accept stranded. When the filters change, the dropped
+    ones are therefore reconsidered too. It costs nothing but CPU, which is why
+    it can simply happen rather than being a button someone has to know about.
     """
-    stats = {"filtered": 0, "candidates": 0}
-    rows = db.q("SELECT * FROM jobs WHERE stage IN ('sourced', 'candidate')")
+    stats = {"filtered": 0, "candidates": 0, "reconsidered": 0}
+    sig = prefilter_sig(pcfg)
+    # No signature at all means a database screened before this existed: its
+    # dropped postings were judged by filters nobody recorded, so they get the
+    # one pass they never had.
+    changed = db.get_meta("prefilter_sig") != sig
+    stages = ("sourced", "candidate", "filtered") if changed else ("sourced", "candidate")
+    if changed:
+        stats["reconsidered"] = db.one(
+            "SELECT COUNT(*) FROM jobs WHERE stage='filtered'")[0]
+        log(f"  filters changed: reconsidering {stats['reconsidered']} postings "
+            f"dropped under the old ones")
+    rows = db.q(f"SELECT * FROM jobs WHERE stage IN ({','.join('?' * len(stages))})",
+                *stages)
     with db.tx():
         for r in rows:
             job = dict(r)
@@ -80,6 +109,8 @@ def screen(db: DB, pcfg: pc.PipelineConfig, scr: Screener, *, dry: bool = False,
                 db.set_stage(job["id"], "candidate", prefilter_score=score)
                 db.event("prefilter", job["id"], passed=True, score=score,
                          skills=hits[:12])
+        if not dry:
+            db.set_meta("prefilter_sig", sig)
     return stats
 
 
