@@ -767,6 +767,38 @@ def main():
             check("the job page carries the gate, so the panel can show it",
                   client.get(f"/api/job/{jid}").json()["autoapply"]["blockers"] != [])
 
+            # the data browser: 5,000 postings need somewhere to be looked at
+            d = client.get("/api/data?per=10").json()
+            check("the data view answers with rows, a total and its facets",
+                  d["total"] >= 1 and len(d["rows"]) >= 1
+                  and {"stage", "source", "status"} <= set(d["facets"]))
+            one = client.get(f"/api/data?q={jid.split(':')[-1][:8]}").json()
+            filtered = client.get("/api/data?status=applied").json()
+            check("a filter narrows the total",
+                  filtered["total"] <= d["total"] and all(
+                      r["status"] == "applied" for r in filtered["rows"]))
+            asc = client.get("/api/data?sort=company&dir=asc&per=50").json()["rows"]
+            got = [r["company"] for r in asc]
+            check("sorting is applied, and only on known columns",
+                  got == sorted(got), f"{got[:6]} vs {sorted(got)[:6]}")
+            check("an unknown sort falls back instead of reaching the query",
+                  client.get("/api/data?sort=1;DROP TABLE jobs--").status_code == 200
+                  and client.get("/api/data").json()["total"] == d["total"])
+            csv_r = client.get("/api/data.csv?status=applied")
+            check("the rows you filtered come out as a file",
+                  csv_r.status_code == 200
+                  and "attachment" in csv_r.headers.get("content-disposition", "")
+                  and csv_r.text.splitlines()[0].startswith("company,title"))
+            check("search needs two letters before it answers",
+                  client.get("/api/search?q=a").json()["rows"] == [])
+            s_rows = client.get("/api/search?q=UI Co").json()["rows"]
+            check("search finds a company by name", any(
+                "ui co" in r["company"].lower() for r in s_rows),
+                [r["company"] for r in s_rows][:4])
+            nb = client.get(f"/api/job/{jid}/neighbours").json()
+            check("the neighbours route resolves, not the catch-all",
+                  set(nb) == {"prev", "next", "i", "n"}, nb)
+
             c = client.get("/api/pipeline/charts")
             body = c.json()
             check("the charts endpoint answers with 30 days of series",

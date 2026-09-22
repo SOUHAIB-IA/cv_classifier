@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
 <style>
   :root{
     --bg:#f6f6f4; --card:#fff; --ink:#1c1b19; --muted:#6b6862;
@@ -66,11 +67,10 @@
 </style>
 </head>
 <body>
+{% include "_nav.html" with context %}
 <div class="wrap">
   <div style="display:flex;align-items:baseline;gap:16px">
-    <h1 style="flex:1">CV Router</h1>
-    <a href="/pipeline" style="font-size:13px;font-weight:600;color:var(--accent)">Pipeline de candidatures →</a>
-    <a href="/settings" style="font-size:13px;font-weight:600;color:var(--muted);margin-left:14px">Réglages</a>
+    <h1 style="flex:1">Analyser une offre</h1>
   </div>
   <div class="sub">{{ n_cvs }} CV indexés : {{ cv_root }}</div>
 
@@ -156,5 +156,6 @@
     </div>
   {% endif %}
 </div>
+<script src="/static/common.js"></script>
 </body>
 </html>

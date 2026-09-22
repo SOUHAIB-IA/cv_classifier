@@ -94,6 +94,7 @@ function renderHead() {
   const url = j.apply_url || j.jd_url;
   $("head").innerHTML = `
     <div class="t">
+      <div class="nb" id="nb"></div>
       <h1>${esc(j.title)}</h1>
       <div class="sub">${esc(j.company)} · ${esc(j.location || "lieu non précisé")} · ${esc(j.source)}
         ${url ? ` · <a href="${esc(url)}" target="_blank" rel="noopener">voir l'annonce ↗</a>` : ""}</div>
@@ -401,6 +402,27 @@ function setDirty(v) {
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
 // ------------------------------------------------------------- pre-filling --
+// Reviewing a queue means going through it, so the next one is a key away
+// rather than a return to the dashboard and a hunt for where you were.
+let NB = {};
+
+async function neighbours() {
+  try { NB = await api(`/api/job/${JOB_ID}/neighbours`); } catch (e) { return; }
+  const box = $("nb");
+  if (!box || NB.i == null) return;
+  box.innerHTML = `<a href="/pipeline">← File d'attente</a>
+    <span>·</span><span>${NB.i} sur ${NB.n}</span>
+    <button class="ico" ${NB.prev ? "" : "disabled"} data-go="prev" title="Précédente (J)">↑</button>
+    <button class="ico" ${NB.next ? "" : "disabled"} data-go="next" title="Suivante (K)">↓</button>`;
+}
+
+addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (e.key === "j" && NB.prev) location.href = jobHref(NB.prev);
+  if (e.key === "k" && NB.next) location.href = jobHref(NB.next);
+});
+
 // --------------------------------------------------------- sending it off --
 // One panel for the last step, because the last step is the irreversible one.
 // It shows the gate before it shows a button: every condition, met or not.
@@ -552,6 +574,8 @@ async function save() {
 $("b-save").onclick = save;
 
 $("head").addEventListener("click", async ev => {
+  const go = ev.target.dataset.go;
+  if (go) { const id = NB[go]; if (id) location.href = jobHref(id); return; }
   const act = ev.target.dataset.act;
   if (!act) return;
   const b = ev.target; b.disabled = true; const label = b.textContent;
@@ -598,5 +622,5 @@ $("head").addEventListener("click", async ev => {
 // After load, not before: both panels render into containers that renderHead
 // and renderSend create, so polling first would drop the state on the floor.
 load()
-  .then(() => { pollPrefill(); pollAuto(); })
+  .then(() => { pollPrefill(); pollAuto(); neighbours(); })
   .catch(e => { $("head").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; });

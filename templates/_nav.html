@@ -1,0 +1,21 @@
+{# The same bar on every page. `here` marks the current one, and carries the
+   one control that belongs to that page: a page-specific element still has to
+   live inside this nav, and an include cannot take a block. #}
+<nav class="top">
+  <b>CV Router</b>
+  <a href="/" {% if here == 'portal' %}class="on"{% endif %}>Analyser</a>
+  <a href="/pipeline" {% if here == 'pipeline' %}class="on"{% endif %}>Pipeline</a>
+  <a href="/data" {% if here == 'data' %}class="on"{% endif %}>Données</a>
+  <a href="/settings" {% if here == 'settings' %}class="on"{% endif %}>Réglages</a>
+  <button class="sbox" id="open-search" title="Rechercher (Ctrl+K)">
+    <span>Rechercher une offre</span><kbd>Ctrl K</kbd></button>
+  <span class="sp"></span>
+  {% if here == 'pipeline' %}
+    <span class="pill"><span class="dot" id="live"></span><span id="livetxt">à l'arrêt</span></span>
+  {% elif here == 'job' %}
+    <span class="dirty" id="dirty"></span>
+  {% elif here == 'settings' %}
+    <span class="dirty" id="dirty"></span>
+    <button id="b-save" class="primary" disabled>Enregistrer</button>
+  {% endif %}
+</nav>

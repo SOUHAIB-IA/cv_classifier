@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Données · CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{% include "_nav.html" with context %}
+<main style="max-width:1500px">
+  <h1>Toutes les offres</h1>
+  <div class="sub">Tout ce que le système a vu, évalué ou envoyé. Clique sur une colonne
+    pour trier, et récupère ce que tu regardes en CSV.</div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="filters">
+      <div class="f1"><label>Rechercher</label>
+        <input id="f-q" placeholder="entreprise, intitulé, lieu…"></div>
+      <div><label>Étape</label><select id="f-stage"></select></div>
+      <div><label>Statut</label><select id="f-status"></select></div>
+      <div><label>Source</label><select id="f-source"></select></div>
+      <div><label>Fit minimum</label><input id="f-fit" type="number" min="0" max="100" step="5" placeholder="–"></div>
+      <div><label style="text-transform:none;letter-spacing:0">&nbsp;</label>
+        <label class="sw" style="height:33px">
+          <input type="checkbox" id="f-app" style="width:auto">
+          <span class="track"><span class="knob"></span></span>
+          <span class="swtxt">Évaluées seulement</span></label></div>
+      <div style="display:flex;gap:8px">
+        <button id="f-clear">Tout effacer</button>
+        <a class="btn primary" id="f-csv" href="#" download>Exporter en CSV</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <h2 style="margin:0;flex:1" id="count">–</h2>
+      <select id="f-per" style="width:auto">
+        <option value="25">25 par page</option>
+        <option value="50" selected>50 par page</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+    </div>
+    <div style="overflow:auto"><table class="data">
+      <thead><tr id="head"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <div class="pager">
+      <span id="pginfo"></span>
+      <button id="pg-first">«</button>
+      <button id="pg-prev">Précédente</button>
+      <button id="pg-next">Suivante</button>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script src="/static/data.js"></script>
+</body>
+</html>

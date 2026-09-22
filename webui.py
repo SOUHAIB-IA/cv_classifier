@@ -21,7 +21,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 import cvrouter as cr
@@ -74,7 +74,7 @@ def _rows(db: DB, where: str, *args, limit: int = 50) -> list[dict]:
 # --------------------------------------------------------------- dashboard --
 @router.get("/pipeline", response_class=HTMLResponse)
 def dashboard(request: Request):
-    return templates.TemplateResponse(request, "dashboard.html", {})
+    return templates.TemplateResponse(request, "dashboard.html", {"here": "pipeline"})
 
 
 @router.get("/api/pipeline/state")
@@ -127,10 +127,151 @@ def state():
     })
 
 
+# -------------------------------------------------------------------- data --
+# One view over jobs, their evaluation and their application. Five thousand
+# postings had nowhere to be looked at: the dashboard shows queues, which is
+# what is happening now, not what happened.
+SORTS = {"first_seen": "j.first_seen", "posted": "j.posted_date",
+         "company": "j.company", "title": "j.title", "fit": "a.fit_score",
+         "ats": "m.ats_score", "prefilter": "j.prefilter_score",
+         "updated": "a.updated_at"}
+DATA_COLS = ("j.id AS job_id, j.company, j.title, j.location, j.source, j.board, "
+             "j.stage, j.posted_date, j.first_seen, j.apply_url, j.jd_url, "
+             "j.prefilter_score, j.language, "
+             "a.status, a.decision, a.fit_score, a.date, a.cv_filename, a.notes, "
+             "m.ats_score, m.recommended_variant")
+
+
+def _data_where(p: dict) -> tuple[str, list]:
+    where, args = ["1=1"], []
+    if q := (p.get("q") or "").strip():
+        where.append("(j.company LIKE ? OR j.title LIKE ? OR j.location LIKE ?)")
+        args += [f"%{q}%"] * 3
+    for field, col in (("stage", "j.stage"), ("source", "j.source"),
+                       ("status", "a.status"), ("decision", "a.decision")):
+        v = p.get(field)
+        if v:
+            where.append(f"{col} = ?")
+            args.append(v)
+    if p.get("fit_min") not in (None, ""):
+        where.append("a.fit_score >= ?")
+        args.append(int(p["fit_min"]))
+    if p.get("has_app"):
+        where.append("a.job_id IS NOT NULL")
+    return " AND ".join(where), args
+
+
+def _data_rows(db: DB, p: dict, limit: int, offset: int) -> list[dict]:
+    where, args = _data_where(p)
+    col = SORTS.get(p.get("sort") or "first_seen", "j.first_seen")
+    direction = "ASC" if (p.get("dir") or "desc").lower() == "asc" else "DESC"
+    return [dict(r) for r in db.q(
+        f"SELECT {DATA_COLS} FROM jobs j "
+        f"LEFT JOIN applications a ON a.job_id = j.id "
+        f"LEFT JOIN matches m ON m.job_id = j.id "
+        f"WHERE {where} ORDER BY {col} IS NULL, {col} {direction}, j.rowid DESC "
+        f"LIMIT {int(limit)} OFFSET {int(offset)}", *args)]
+
+
+@router.get("/data", response_class=HTMLResponse)
+def data_page(request: Request):
+    return templates.TemplateResponse(request, "data.html", {"here": "data"})
+
+
+@router.get("/api/data")
+def data(q: str = "", stage: str = "", source: str = "", status: str = "",
+         decision: str = "", fit_min: str = "", has_app: str = "",
+         sort: str = "first_seen", dir: str = "desc",
+         page: int = 1, per: int = 50):
+    pcfg, cfg, db = _ctx()
+    p = {"q": q, "stage": stage, "source": source, "status": status,
+         "decision": decision, "fit_min": fit_min or None, "has_app": has_app,
+         "sort": sort, "dir": dir}
+    where, args = _data_where(p)
+    total = db.one(f"SELECT COUNT(*) FROM jobs j "
+                   f"LEFT JOIN applications a ON a.job_id=j.id "
+                   f"LEFT JOIN matches m ON m.job_id=j.id WHERE {where}", *args)[0]
+    per = max(10, min(int(per), 200))
+    page = max(1, int(page))
+    return JSONResponse({
+        "rows": _data_rows(db, p, per, (page - 1) * per),
+        "total": total, "page": page, "per": per,
+        "pages": max(1, -(-total // per)),
+        "facets": {
+            "stage": [dict(zip(("v", "n"), r)) for r in db.q(
+                "SELECT stage, COUNT(*) FROM jobs GROUP BY stage ORDER BY 2 DESC")],
+            "source": [dict(zip(("v", "n"), r)) for r in db.q(
+                "SELECT source, COUNT(*) FROM jobs GROUP BY source ORDER BY 2 DESC")],
+            "status": [dict(zip(("v", "n"), r)) for r in db.q(
+                "SELECT status, COUNT(*) FROM applications GROUP BY status ORDER BY 2 DESC")],
+        },
+        "sorts": sorted(SORTS),
+    })
+
+
+@router.get("/api/data.csv")
+def data_csv(q: str = "", stage: str = "", source: str = "", status: str = "",
+             decision: str = "", fit_min: str = "", has_app: str = "",
+             sort: str = "first_seen", dir: str = "desc"):
+    """The rows you are looking at, as a file, so the data is yours to keep."""
+    import csv
+    import io
+    pcfg, cfg, db = _ctx()
+    rows = _data_rows(db, {"q": q, "stage": stage, "source": source,
+                           "status": status, "decision": decision,
+                           "fit_min": fit_min or None, "has_app": has_app,
+                           "sort": sort, "dir": dir}, 20_000, 0)
+    buf = io.StringIO()
+    cols = ["company", "title", "location", "source", "board", "stage", "status",
+            "decision", "fit_score", "ats_score", "prefilter_score", "posted_date",
+            "first_seen", "date", "cv_filename", "apply_url", "job_id"]
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    w.writerows(rows)
+    return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition":
+                             'attachment; filename="cv-router-offres.csv"'})
+
+
+@router.get("/api/search")
+def search(q: str = "", limit: int = 12):
+    """What the Ctrl+K box needs: a few good matches, fast."""
+    q = q.strip()
+    if len(q) < 2:
+        return {"rows": []}
+    pcfg, cfg, db = _ctx()
+    like = f"%{q}%"
+    return {"rows": [dict(r) for r in db.q(
+        "SELECT j.id AS job_id, j.company, j.title, j.location, j.stage, "
+        "a.status, a.fit_score FROM jobs j "
+        "LEFT JOIN applications a ON a.job_id = j.id "
+        "WHERE j.company LIKE ? OR j.title LIKE ? "
+        # something you acted on beats a posting nobody ever looked at
+        "ORDER BY a.job_id IS NULL, a.fit_score DESC, j.first_seen DESC LIMIT ?",
+        like, like, max(1, min(int(limit), 30)))]}
+
+
+@router.get("/api/job/{job_id:path}/neighbours")
+def job_neighbours(job_id: str):
+    """The application before and after this one, so a review is a run, not a
+    series of returns to the dashboard."""
+    pcfg, cfg, db = _ctx()
+    rows = [r["job_id"] for r in db.q(
+        "SELECT a.job_id FROM applications a WHERE a.status IN "
+        "('draft','staged','review','pending') "
+        "ORDER BY a.fit_score DESC, a.updated_at DESC")]
+    if job_id not in rows:
+        return {"prev": None, "next": None, "i": None, "n": len(rows)}
+    i = rows.index(job_id)
+    return {"prev": rows[i - 1] if i else None,
+            "next": rows[i + 1] if i + 1 < len(rows) else None,
+            "i": i + 1, "n": len(rows)}
+
+
 # ---------------------------------------------------------------- settings --
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
-    return templates.TemplateResponse(request, "settings.html", {})
+    return templates.TemplateResponse(request, "settings.html", {"here": "settings"})
 
 
 @router.get("/api/settings")
@@ -334,7 +475,7 @@ def cv_pdf(job_id: str):
 
 @router.get("/job/{job_id:path}", response_class=HTMLResponse)
 def job_page(request: Request, job_id: str):
-    return templates.TemplateResponse(request, "job.html", {"job_id": job_id})
+    return templates.TemplateResponse(request, "job.html", {"job_id": job_id, "here": "job"})
 
 
 # Declared before the catch-all below: a {path} converter swallows slashes, so

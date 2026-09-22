@@ -61,14 +61,14 @@ def home(request: Request):
     return templates.TemplateResponse(
         request, "portal.html",
         {"result": None, "job": "", "n_cvs": len(idx.records),
-         "cv_root": str(cfg.cv_root), "error": None},
+         "cv_root": str(cfg.cv_root), "error": None, "here": "portal"},
     )
 
 
 @app.post("/", response_class=HTMLResponse)
 def match(request: Request, job: str = Form(...)):
     idx = _index()
-    ctx = {"job": job, "n_cvs": len(idx.records),
+    ctx = {"job": job, "n_cvs": len(idx.records), "here": "portal",
            "cv_root": str(cfg.cv_root), "result": None, "error": None}
     try:
         ctx["result"] = analyse(job)
