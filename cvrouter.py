@@ -729,10 +729,47 @@ def ask_json(cfg: Config, system: str, user: str, max_tokens: int | None = None,
         body = _ask_api(cfg, system, user, max_tokens, model=model)
     else:
         body = _ask_compatible(cfg, system, user, max_tokens, model=model)
-    m = re.search(r"\{.*\}", body.strip(), re.S)
-    if not m:
-        raise AIError(f"model did not return JSON: {body.strip()[:300]}")
-    return json.loads(m.group(0))
+    for obj in json_objects(body):
+        try:
+            return json.loads(obj)
+        except json.JSONDecodeError:
+            continue
+    raise AIError(f"model did not return JSON: {body.strip()[:300]}")
+
+
+def json_objects(text: str) -> list[str]:
+    """Every balanced {...} in the text, biggest first.
+
+    A greedy match from the first brace to the last one is wrong whenever the
+    model writes anything else: a sentence containing a brace, or an example
+    object before the answer, and the span covers both and parses as neither.
+    Measured on a real run, that lost 2 evaluations out of 8.
+
+    Braces inside strings are not structure, so the scan tracks quoting and
+    escapes rather than counting characters.
+    """
+    text = re.sub(r"^\s*```(?:json)?|```\s*$", "", text.strip(), flags=re.M)
+    spans, stack, in_str, esc = [], [], False, False
+    for i, ch in enumerate(text):
+        if esc:
+            esc = False
+        elif in_str:
+            if ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch == "{":
+            stack.append(i)
+        elif ch == "}" and stack:
+            start = stack.pop()
+            if not stack:                       # a complete top-level object
+                spans.append((start, i + 1))
+    out = [text[a:b] for a, b in spans]
+    if stack:                                   # truncated: try what there is
+        out.append(text[stack[0]:])
+    return sorted(out, key=len, reverse=True)
 
 
 # --------------------------------------------------------- classify one PDF --

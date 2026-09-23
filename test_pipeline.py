@@ -589,6 +589,28 @@ def main():
 
     # ----------------------------------------------------------------- matcher
     print("\n10. matcher")
+    # A greedy {.*} span from the first brace to the last is wrong the moment
+    # the model writes anything else. Measured on a real run: 2 losses in 8.
+    for label, body, want in [
+        ("a bare object", '{"fit_score": 42}', 42),
+        ("prose around it", 'Here it is:\n{"fit_score": 42}\nHope that helps.', 42),
+        ("a brace in a sentence first", 'Use {key: value}. Answer:\n{"fit_score": 42}', 42),
+        ("an example before the answer", '{"example": 1}\n\nReal one:\n{"fit_score": 42}', 42),
+        ("a fenced block", '```json\n{"fit_score": 42}\n```', 42),
+        ("a brace inside a string", '{"why": "he writes {this}", "fit_score": 42}', 42),
+        ("an escaped quote", '{"why": "he said \\"yes\\"", "fit_score": 42}', 42),
+    ]:
+        got = None
+        for cand in cr.json_objects(body):
+            try:
+                got = json.loads(cand)
+                break
+            except json.JSONDecodeError:
+                continue
+        check(f"JSON read back: {label}", got and got.get("fit_score") == want, got)
+    check("nothing that parses means nothing returned",
+          cr.json_objects("no json here at all") == [])
+
     check("French ad detected", matcher.guess_language(
         "Nous recherchons un ingénieur pour notre équipe, avec une expérience en IA.") == "fr")
     check("English ad detected", matcher.guess_language(
