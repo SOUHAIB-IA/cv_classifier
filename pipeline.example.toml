@@ -57,6 +57,9 @@ max_years_required = 2
 work_authorization = ["morocco", "maroc"]
 
 [sourcing]
+# false: keep routing and tailoring what is already collected, and stop
+# asking the job boards for anything new.
+enabled = true
 request_delay_seconds      = 2.0   # between boards: spread load, look like a person
 board_min_interval_minutes = 180   # re-fetch a board at most this often
 boards_per_run             = 10    # a run takes the boards that waited longest

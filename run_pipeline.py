@@ -29,7 +29,9 @@ def cycle(*, dry: bool = False, do_fetch: bool = True, boards: int | None = None
     db = DB(pcfg.db)
     out: dict = {}
     with run_lock(pcfg.lock_file):
-        if do_fetch:
+        if do_fetch and not pcfg.sourcing_enabled:
+            log("fetch off: working through what is already collected")
+        if do_fetch and pcfg.sourcing_enabled:
             log("fetch")
             out["fetch"] = F.fetch(db, pcfg, log=log,
                                    max_boards=pcfg.boards_per_run if boards is None else boards)

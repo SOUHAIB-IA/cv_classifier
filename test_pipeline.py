@@ -471,6 +471,22 @@ def main():
           len([t for t in ["Submit application", "Send application"]
                if AA.EXPLICIT_RX.search(t)]) == 2)
 
+    # collecting can be switched off without stopping the cycle
+    import run_pipeline
+    said = []
+    check("the cycle asks the boards for more while sourcing is on",
+          pcfg.sourcing_enabled is True)
+    real_load = pc.load
+    pc.load = lambda *a, **k: replace(pcfg, sourcing_enabled=False)
+    try:
+        run_pipeline.cycle(dry=True, log=said.append)
+    except Exception as e:
+        said.append(f"error {e}")
+    finally:
+        pc.load = real_load
+    check("switched off, it works through what is already collected instead",
+          any("fetch off" in s for s in said) and not any(s == "fetch" for s in said), said[:4])
+
     # ----------------------------------------------------------------- settings
     # patch() and coerce() only: write() edits the real config files, and a
     # test suite must never touch those.

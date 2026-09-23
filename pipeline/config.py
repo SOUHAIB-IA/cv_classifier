@@ -41,6 +41,7 @@ class PipelineConfig:
     max_years_required: int
     work_authorization: list[str] | None
 
+    sourcing_enabled: bool
     request_delay: float
     boards_per_run: int
     board_min_interval_min: int
@@ -104,6 +105,8 @@ def load(path: Path | None = None) -> PipelineConfig:
         max_years_required=int(f.get("max_years_required", 0)),
         work_authorization=([x.lower() for x in f["work_authorization"]]
                             if "work_authorization" in f else None),
+        # false: keep running cycles, stop asking the boards for more.
+        sourcing_enabled=bool(s.get("enabled", True)),
         request_delay=float(s.get("request_delay_seconds", 2.0)),
         boards_per_run=int(s.get("boards_per_run", 10)),
         board_min_interval_min=int(s.get("board_min_interval_minutes", 180)),

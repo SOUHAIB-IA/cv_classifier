@@ -134,6 +134,10 @@ GROUPS: list[tuple[str, str, list[Field]]] = [
               "number", "Un cycle tourne toutes les 45 minutes.", min=1, max=50),
     ]),
     ("sources", "Où chercher", [
+        Field("sourcing.enabled", "pipeline", "Collecter de nouvelles offres", "toggle",
+              "Désactivé, le pipeline continue de tourner sur ce qui est déjà "
+              "collecté : il évalue, prépare les CV et te les présente, mais ne "
+              "demande plus rien aux tableaux d'offres."),
         Field("sources.greenhouse.boards", "pipeline", "Entreprises sur Greenhouse",
               "tags", "Une étiquette par entreprise, sous la forme "
               "identifiant=Nom affiché. L'identifiant est ce qui apparaît dans "
