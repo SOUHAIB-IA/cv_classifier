@@ -198,8 +198,38 @@ def main():
           O.prefilter_sig(wider) == db.get_meta("prefilter_sig")
           and O.screen(db, wider, Screener(wider, cfg),
                        log=lambda *a: None)["reconsidered"] == 0)
+
+    # a posting dropped for its pre-screen score is skipped, not filtered, and
+    # lowering the floor has to reach it too
+    weak = job(78, company="Weakmatch", title="Machine Learning Engineer",
+               jd="Ruby on Rails, PHP and WordPress. No Python here.")
     with db.tx():
-        db.set_stage(far["id"], "filtered", status="processed")
+        db.upsert_job(weak)
+        db.set_stage(weak["id"], "skipped", status="processed")
+        db.upsert_application(weak["id"], decision="skip", status="skipped",
+                              notes="pre-screen 0.10 < 0.30")
+    mine = replace(wider, prefilter_min=0.0, title_include=wider.title_include + ["zzz"])
+    st = O.screen(db, mine, Screener(mine, cfg), log=lambda *a: None)
+    check("dropping the score floor brings back what it had skipped",
+          db.one("SELECT stage FROM jobs WHERE id=?", weak["id"])["stage"] == "candidate", st)
+    check("…and the bookkeeping row that said so is gone, so it is not a duplicate",
+          db.one("SELECT 1 FROM applications WHERE job_id=?", weak["id"]) is None)
+    kept = job(79, company="Yours", title="Machine Learning Engineer")
+    with db.tx():
+        db.upsert_job(kept)
+        db.set_stage(kept["id"], "skipped", status="processed")
+        db.upsert_application(kept["id"], decision="skip", status="skipped",
+                              notes="skipped by you")
+    mine2 = replace(mine, title_include=mine.title_include + ["yyy"])
+    O.screen(db, mine2, Screener(mine2, cfg), log=lambda *a: None)
+    check("a decision of yours is never undone by a filter change",
+          db.one("SELECT status FROM applications WHERE job_id=?",
+                 kept["id"])["status"] == "skipped"
+          and db.one("SELECT stage FROM jobs WHERE id=?", kept["id"])["stage"] == "skipped")
+    with db.tx():                       # out of the way of the sections below
+        for x in (far, weak, kept):
+            db.conn.execute("DELETE FROM applications WHERE job_id=?", (x["id"],))
+            db.conn.execute("DELETE FROM jobs WHERE id=?", (x["id"],))
     check("dedupe key ignores (H/F) and case",
           dedupe_key("Co0", "ML Engineer A (H/F)") == dedupe_key("co0", "ml engineer a"))
 

@@ -86,13 +86,33 @@ def screen(db: DB, pcfg: pc.PipelineConfig, scr: Screener, *, dry: bool = False,
     # one pass they never had.
     changed = db.get_meta("prefilter_sig") != sig
     stages = ("sourced", "candidate", "filtered") if changed else ("sourced", "candidate")
+    revived: list[str] = []
     if changed:
         stats["reconsidered"] = db.one(
             "SELECT COUNT(*) FROM jobs WHERE stage='filtered'")[0]
+        # A posting dropped for scoring under prefilter_min is stage=skipped, not
+        # filtered, and carries an application row saying so. Lowering the floor
+        # has to reach those too, or the setting only ever works one way. The row
+        # recorded an automatic screening outcome and no decision of yours, so it
+        # goes; rows you acted on say something else and are never matched here.
+        revived = [r[0] for r in db.q(
+            "SELECT j.id FROM jobs j JOIN applications a ON a.job_id = j.id "
+            "WHERE j.stage = 'skipped' AND a.status = 'skipped' "
+            "AND a.notes LIKE 'pre-screen %'")]
+        if revived and not dry:
+            with db.tx():
+                db.conn.executemany("DELETE FROM applications WHERE job_id=?",
+                                    [(i,) for i in revived])
+        stats["reconsidered"] += len(revived)
         log(f"  filters changed: reconsidering {stats['reconsidered']} postings "
-            f"dropped under the old ones")
-    rows = db.q(f"SELECT * FROM jobs WHERE stage IN ({','.join('?' * len(stages))})",
-                *stages)
+            f"dropped under the old ones"
+            + (f", {len(revived)} of them dropped on their pre-screen score"
+               if revived else ""))
+    marks = ",".join("?" * len(stages))
+    ids = ",".join("?" * len(revived))
+    rows = db.q(
+        f"SELECT * FROM jobs WHERE stage IN ({marks})"
+        + (f" OR id IN ({ids})" if revived else ""), *stages, *revived)
     with db.tx():
         for r in rows:
             job = dict(r)
