@@ -295,3 +295,8 @@ table.data th:nth-child(4), table.data th:nth-child(5), table.data th:nth-child(
 table.data td:nth-child(4), table.data td:nth-child(5), table.data td:nth-child(6) { text-align: center; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
          -webkit-box-orient: vertical; overflow: hidden; max-width: 220px; }
+/* an entry kept in the document but off this CV */
+.ed-item.hidden-it { opacity: .5; border-left-style: dashed; }
+.it-bar { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; }
+.it-bar .sub { flex: 1; font-size: 11.5px; }
+.ico.off { color: var(--muted); }

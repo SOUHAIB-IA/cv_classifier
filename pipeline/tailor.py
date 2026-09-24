@@ -542,7 +542,17 @@ def page_count(pdf: Path) -> int:
 def render_fitted(doc: dict, lang: str, out: Path, chrome: str,
                   max_pages: int = 1, photo: str | None = None) -> tuple[int, int]:
     """Render at the loosest density that fits max_pages.
-    Returns (pages, density step used)."""
+    Returns (pages, density step used).
+
+    doc["density"] pins a step instead of searching: the automatic choice is
+    the loosest that fits, which is not always the one you want. A pinned step
+    is used as given, even if the result runs over.
+    """
+    pinned = doc.get("density")
+    if pinned is not None and str(pinned) != "":
+        step = max(0, min(int(pinned), len(DENSITY) - 1))
+        html_to_pdf(render_html(doc, lang, DENSITY[step], photo), out, chrome)
+        return page_count(out), step
     for step, d in enumerate(DENSITY):
         html_to_pdf(render_html(doc, lang, d, photo), out, chrome)
         pages = page_count(out)

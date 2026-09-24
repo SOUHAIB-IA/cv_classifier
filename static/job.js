@@ -38,6 +38,37 @@ function origHint(p) {
   return "Original : " + (Array.isArray(b) ? b.join(", ") : b);
 }
 
+// Editing a CV by hand means trying things. Twenty snapshots is enough to get
+// back from a wrong move and small enough to keep in memory.
+let undoStack = [];
+
+let typeTimer = null;
+function typingSnapshot() {
+  if (typeTimer) { clearTimeout(typeTimer); typeTimer = setTimeout(() => typeTimer = null, 1200); return; }
+  snapshot();
+  typeTimer = setTimeout(() => typeTimer = null, 1200);
+}
+
+function snapshot() {
+  if (!doc) return;
+  undoStack.push(JSON.stringify(doc));
+  if (undoStack.length > 20) undoStack.shift();
+}
+
+function undo() {
+  const prev = undoStack.pop();
+  if (!prev) { toast("Rien à annuler."); return; }
+  doc = JSON.parse(prev);
+  renderEditor(); setDirty(true); schedulePreview(0);
+  toast(`Annulé. ${undoStack.length} étape(s) encore en arrière.`);
+}
+
+addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+  if (/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;  // let the field undo
+  e.preventDefault(); undo();
+});
+
 // ----------------------------------------------------------------- render --
 async function load() {
   D = await api("/api/job/" + JOB_ID);
@@ -184,6 +215,14 @@ function renderEditor() {
           ${[["calibri", "Calibri"], ["cambria", "Cambria"], ["garamond", "Garamond"], ["arial", "Arial"]]
             .map(([v, l]) => `<option value="${v}" ${(doc.style || "calibri") === v ? "selected" : ""}>${l}</option>`).join("")}
         </select></label>
+      <label style="display:flex;gap:8px;align-items:center">Mise en page
+        <select id="cv-density" style="width:auto">
+          <option value="">ajustée automatiquement</option>
+          ${["1 · la plus aérée", "2", "3", "4 · la plus dense"].map((l, i) =>
+            `<option value="${i}" ${String(doc.density ?? "") === String(i) ? "selected" : ""}>${l}</option>`).join("")}
+        </select></label>
+      <span class="sub" id="pagehint"></span>
+      <button class="small" id="b-undo" title="Annuler (Ctrl+Z)">↶ Annuler</button>
     </div>
     <label class="f">Nom</label>${field(["name"], doc.name)}
     <label class="f">Accroche (titre sous le nom)</label>${field(["headline"], doc.headline)}
@@ -200,7 +239,10 @@ function renderEditor() {
       ${field(["sections", si, "title"], s.title)}
       <span class="tag">${s.kind || "other"}</span>
       <button class="ico" data-op="sec-up" data-si="${si}" title="Monter">↑</button>
-      <button class="ico" data-op="sec-down" data-si="${si}" title="Descendre">↓</button></div>`;
+      <button class="ico" data-op="sec-down" data-si="${si}" title="Descendre">↓</button>
+      <button class="ico ${s.hide ? "off" : ""}" data-op="sec-hide" data-si="${si}"
+              title="${s.hide ? "Remettre sur le CV" : "Retirer du CV sans effacer"}">${s.hide ? "◯" : "◉"}</button>
+      <button class="ico danger" data-op="sec-del" data-si="${si}" title="Supprimer la rubrique">✕</button></div>`;
     if (s.kind === "skills") {
       (s.groups || []).forEach((g, gi) => {
         h += `<div class="ed-item"><div class="grid" style="grid-template-columns:1fr 2.4fr;gap:6px">
@@ -213,7 +255,16 @@ function renderEditor() {
       h += `<div style="margin-top:8px">${field(["sections", si, "lines"], s.lines, { area: true, kind: "lines", rows: Math.max(2, (s.lines || []).length), ph: "Une ligne par entrée" })}</div>`;
     } else {
       (s.items || []).forEach((it, ii) => {
-        h += `<div class="ed-item"><div class="r4">
+        h += `<div class="ed-item ${it.hide ? "hidden-it" : ""}">
+          <div class="it-bar">
+            <span class="sub">${it.hide ? "retiré de ce CV" : `entrée ${ii + 1}`}</span>
+            <button class="ico" data-op="it-up" data-si="${si}" data-ii="${ii}" title="Monter">↑</button>
+            <button class="ico" data-op="it-down" data-si="${si}" data-ii="${ii}" title="Descendre">↓</button>
+            <button class="ico ${it.hide ? "off" : ""}" data-op="it-hide" data-si="${si}" data-ii="${ii}"
+                    title="${it.hide ? "Remettre sur le CV" : "Retirer du CV sans effacer"}">${it.hide ? "◯" : "◉"}</button>
+            <button class="ico danger" data-op="it-del" data-si="${si}" data-ii="${ii}" title="Supprimer">✕</button>
+          </div>
+          <div class="r4">
           ${field(["sections", si, "items", ii, "heading"], it.heading, { ph: "Poste / projet / diplôme" })}
           ${field(["sections", si, "items", ii, "org"], it.org, { ph: "Entreprise / école / stack" })}
           ${field(["sections", si, "items", ii, "location"], it.location, { ph: "Lieu" })}
@@ -228,9 +279,14 @@ function renderEditor() {
         });
         h += `<button class="small" style="margin-top:6px" data-op="b-add" data-si="${si}" data-ii="${ii}">+ puce</button></div>`;
       });
+      h += `<button class="small" style="margin-top:8px" data-op="it-add" data-si="${si}">+ entrée</button>`;
     }
     h += `</div>`;
   });
+  h += `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="small" data-op="sec-add">+ rubrique</button>
+    <button class="small" data-op="sec-add-skills">+ rubrique compétences</button>
+  </div>`;
   $("editor").innerHTML = h;
 }
 
@@ -242,7 +298,13 @@ $("editor").addEventListener("input", ev => {
   if (el.id === "cv-style") {
     doc.style = el.value; setDirty(true); schedulePreview(0); return;
   }
+  if (el.id === "cv-density") {
+    // "" means let the renderer pick the loosest step that fits
+    doc.density = el.value === "" ? null : Number(el.value);
+    setDirty(true); schedulePreview(0); return;
+  }
   if (!el.dataset.p) return;
+  typingSnapshot();
   const p = JSON.parse(el.dataset.p);
   let v = el.value;
   if (el.dataset.kind === "list") v = splitItems(v);
@@ -257,11 +319,35 @@ $("editor").addEventListener("click", ev => {
   if (!b) return;
   const { op } = b.dataset, si = +b.dataset.si, ii = +b.dataset.ii, bi = +b.dataset.bi;
   const li = +b.dataset.li;
+  snapshot();                       // every structural change is undoable
   if (op === "lk-del") (doc.contact.links || []).splice(li, 1);
   if (op === "lk-add") (doc.contact.links ||= []).push({ label: "", url: "" });
   const secs = doc.sections;
   const swap = (arr, i, j) => { if (j >= 0 && j < arr.length) [arr[i], arr[j]] = [arr[j], arr[i]]; };
   const bul = () => secs[si].items[ii].bullets;
+  const items = () => (secs[si].items ||= []);
+
+  // Hiding leaves the entry in the document and takes it off this CV. It is
+  // the quickest way back to one page, and unlike deleting you can change
+  // your mind, so it is the default gesture and delete asks first.
+  if (op === "sec-hide") secs[si].hide = !secs[si].hide;
+  if (op === "it-hide") items()[ii].hide = !items()[ii].hide;
+  if (op === "it-up") swap(items(), ii, ii - 1);
+  if (op === "it-down") swap(items(), ii, ii + 1);
+  if (op === "it-add") items().push({ heading: "", org: "", dates: "", location: "", bullets: [""] });
+  if (op === "it-del") {
+    const it = items()[ii];
+    if (!confirm(`Supprimer « ${it.heading || "cette entrée"} » ?\n\n`
+               + `Pour la retirer de ce CV sans l'effacer, utilise ◉ à la place.`)) return;
+    items().splice(ii, 1);
+  }
+  if (op === "sec-del") {
+    if (!confirm(`Supprimer la rubrique « ${secs[si].title || ""} » et tout son contenu ?\n\n`
+               + `Pour la retirer de ce CV sans l'effacer, utilise ◉ à la place.`)) return;
+    secs.splice(si, 1);
+  }
+  if (op === "sec-add") secs.push({ title: "NOUVELLE RUBRIQUE", kind: "other", items: [] });
+  if (op === "sec-add-skills") secs.push({ title: "COMPÉTENCES", kind: "skills", groups: [{ label: "", items: [] }] });
   if (op === "sec-up") swap(secs, si, si - 1);
   if (op === "sec-down") swap(secs, si, si + 1);
   if (op === "b-up") swap(bul(), bi, bi - 1);
@@ -377,13 +463,27 @@ $("preview").addEventListener("load", () => {
     pageH = Math.max(PAGE_H, d.documentElement.scrollHeight);
   } catch (e) { pageH = PAGE_H; }
   scalePreview();
+  pageHint();
 });
+
+// How many pages the CV is heading for, updated as you edit, so trimming to
+// one page is a thing you watch happen instead of a surprise after saving.
+function pageHint() {
+  const el = $("pagehint");
+  if (!el) return;
+  const n = Math.max(1, Math.ceil((pageH - TOLERANCE) / PAGE_H));
+  const over = pageH - PAGE_H;
+  el.innerHTML = n === 1
+    ? `<span style="color:var(--accent)">tient sur une page</span>`
+    : `<span style="color:var(--warn)">${n} pages</span> · environ `
+      + `${Math.ceil(over / 18)} ligne(s) de trop`;
+}
 
 function schedulePreview(delay = 400) {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(async () => {
     if (!doc) { $("preview").srcdoc = `<p style="font:14px sans-serif;color:#888;padding:20px">Pas encore de CV adapté.</p>`; return; }
-    const density = D.cv?.meta?.density_step ?? 0;
+    const density = doc.density ?? D.cv?.meta?.density_step ?? 0;
     const html = await api(`/api/job/${JOB_ID}/preview`, { doc, lang: D.cv?.meta?.lang || "fr", density });
     const wrap = $("pw"), top = wrap.scrollTop, left = wrap.scrollLeft;   // keep your place while editing
     $("preview").srcdoc = html;
@@ -572,6 +672,9 @@ async function save() {
   $("b-save").disabled = false; $("b-save").textContent = "Enregistrer et régénérer le PDF";
 }
 $("b-save").onclick = save;
+$("editor").addEventListener("click", ev => {
+  if (ev.target.id === "b-undo") undo();
+}, true);
 
 $("head").addEventListener("click", async ev => {
   const go = ev.target.dataset.go;

@@ -100,11 +100,13 @@
   <p class="summary">{{ doc.summary }}</p>
   {% endif %}
 
-  {% for sec in doc.sections %}
+  {#- hide keeps an entry in the document but off this CV: the fastest way
+    from two pages to one, and reversible, unlike deleting it. -#}
+  {% for sec in doc.sections if not sec.hide %}
   <h2>{{ sec.title }}</h2>
   {% if sec.kind == "skills" %}
     <div class="skills">
-    {% for g in sec.groups or [] %}
+    {% for g in sec.groups or [] if not g.hide %}
       {% if g.label %}<div class="lab">{{ g.label }}</div><div>{{ g["items"] | join(", ") }}</div>
       {% else %}<div style="grid-column: 1 / -1">{{ g["items"] | join(", ") }}</div>{% endif %}
     {% endfor %}
@@ -119,7 +121,7 @@
       <div class="lines">{% for l in ls %}<p>{{ l }}</p>{% endfor %}</div>
     {% endif %}
   {% else %}
-    {% for it in sec["items"] or [] %}
+    {% for it in sec["items"] or [] if not it.hide %}
     <div class="item">
       {# Role and employer on the left, place and dates on the right, in that
          order in the text too: an ATS reads "role, employer, place, dates". #}
@@ -128,7 +130,8 @@
         <div class="l"><span class="role">{{ it.heading }}</span>{% if it.org %}, <span class="org">{{ it.org }}</span>{% endif %}</div>
         {% if meta %}<div class="r">{{ meta | join("  |  ") }}</div>{% endif %}
       </div>
-      {% if it.bullets %}<ul>{% for b in it.bullets %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+      {% set bs = it.bullets | select | list %}
+      {% if bs %}<ul>{% for b in bs %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
     </div>
     {% endfor %}
   {% endif %}

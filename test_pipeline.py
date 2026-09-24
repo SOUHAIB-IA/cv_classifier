@@ -681,6 +681,38 @@ def main():
             emb = sp.run(["pdffonts", str(out)], capture_output=True, text=True).stdout
             check(f"{style}: the real typeface is embedded, not a fallback",
                   face in emb and "Tinos" not in emb, emb.splitlines()[2:4])
+        # hiding: kept in the document, off this CV, and reversible
+        two = {**pro, "sections": [
+            {"title": "Experience", "kind": "experience", "items": [
+                {"heading": "Kept role", "org": "Acme", "bullets": ["Shipped it."]},
+                {"heading": "Hidden role", "org": "Zeta", "bullets": ["Older work."]}]},
+            {"title": "Interests", "kind": "list", "lines": ["Chess"]}]}
+        full = T.render_html(two, "en")
+        check("everything renders when nothing is hidden",
+              "Kept role" in full and "Hidden role" in full and "Interests" in full)
+        two["sections"][0]["items"][1]["hide"] = True
+        two["sections"][1]["hide"] = True
+        less = T.render_html(two, "en")
+        check("a hidden entry leaves the CV", "Hidden role" not in less and "Older work" not in less)
+        check("a hidden section leaves with it", "Interests" not in less)
+        check("…and what you kept is untouched", "Kept role" in less and "Shipped it." in less)
+        check("the document still holds them, so it is reversible",
+              two["sections"][0]["items"][1]["heading"] == "Hidden role"
+              and len(two["sections"]) == 2)
+        two["sections"][0]["items"][0]["bullets"] = ["Shipped it.", "", None]
+        check("an empty bullet does not print an empty line",
+              T.render_html(two, "en").count("<li>") == 1)
+
+        # density: automatic by default, pinned when you say so
+        auto_pdf, pin_pdf = tmp / "auto.pdf", tmp / "pin.pdf"
+        pages_a, step_a = T.render_fitted(big, "en", auto_pdf, chrome, max_pages=1)
+        pages_p, step_p = T.render_fitted({**big, "density": 0}, "en", pin_pdf, chrome,
+                                          max_pages=1)
+        check("left alone, the renderer tightens until it fits",
+              pages_a == 1 and step_a > 0, f"{pages_a}p at step {step_a}")
+        check("pinned, the step you chose is the one used, overflow and all",
+              step_p == 0 and pages_p >= pages_a, f"{pages_p}p at step {step_p}")
+
         # default: the word is the link, the address is behind it
         out = tmp / "contact.pdf"
         T.html_to_pdf(T.render_html(pro, "en"), out, chrome)
