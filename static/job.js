@@ -274,8 +274,18 @@ function renderEditor() {
             <div style="display:flex;flex-direction:column;gap:3px">
               <button class="ico" data-op="b-up" data-si="${si}" data-ii="${ii}" data-bi="${bi}" title="Monter">↑</button>
               <button class="ico" data-op="b-down" data-si="${si}" data-ii="${ii}" data-bi="${bi}" title="Descendre">↓</button>
+              <button class="ico" data-op="b-hide" data-si="${si}" data-ii="${ii}" data-bi="${bi}"
+                      title="Retirer de ce CV sans effacer le texte">◉</button>
               <button class="ico danger" data-op="b-del" data-si="${si}" data-ii="${ii}" data-bi="${bi}" title="Supprimer">✕</button>
             </div></div>`;
+        });
+        // Lines taken off this CV keep their text and sit under the ones that
+        // stayed, so putting one back is a click and never a retype.
+        (it.bullets_hidden || []).forEach((b, hi) => {
+          h += `<div class="bul hidden-bul">
+            <div class="hb">${esc(b)}</div>
+            <button class="ico off" data-op="b-show" data-si="${si}" data-ii="${ii}" data-hi="${hi}"
+                    title="Remettre sur le CV">◯</button></div>`;
         });
         h += `<button class="small" style="margin-top:6px" data-op="b-add" data-si="${si}" data-ii="${ii}">+ puce</button></div>`;
       });
@@ -354,6 +364,9 @@ $("editor").addEventListener("click", ev => {
   if (op === "b-down") swap(bul(), bi, bi + 1);
   if (op === "b-del") bul().splice(bi, 1);
   if (op === "b-add") (secs[si].items[ii].bullets ||= []).push("");
+  const hidden = () => (secs[si].items[ii].bullets_hidden ||= []);
+  if (op === "b-hide") hidden().push(...bul().splice(bi, 1));
+  if (op === "b-show") bul().push(...hidden().splice(+b.dataset.hi, 1));
   if (op === "add-group") (secs[si].groups ||= []).push({ label: "", items: [] });
   renderEditor(); setDirty(true); schedulePreview();
 });

@@ -29,7 +29,23 @@ log = cr.setup_logging(cfg, "portal")
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 app = FastAPI(title="CV Router")
 app.include_router(webui.router)           # /pipeline dashboard and the CV editor
-app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
+class _Revalidating(StaticFiles):
+    """Serve the assets with "ask me every time".
+
+    Without a Cache-Control header a browser invents its own expiry, which for
+    a file that changed minutes ago can be hours. The app then keeps running
+    last week's JavaScript and a feature that shipped looks like it did not.
+    no-cache still lets the ETag answer 304, so revalidating costs one small
+    request and never the file.
+    """
+
+    def file_response(self, *args, **kw):
+        r = super().file_response(*args, **kw)
+        r.headers["Cache-Control"] = "no-cache"
+        return r
+
+
+app.mount("/static", _Revalidating(directory=str(HERE / "static")), name="static")
 
 _index_cache: dict = {"mtime": None, "idx": None}
 _index_lock = threading.Lock()

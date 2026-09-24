@@ -699,6 +699,14 @@ def main():
         check("the document still holds them, so it is reversible",
               two["sections"][0]["items"][1]["heading"] == "Hidden role"
               and len(two["sections"]) == 2)
+        # one line of a project, off this CV, text intact
+        two["sections"][0]["items"][0]["bullets"] = ["Shipped it."]
+        two["sections"][0]["items"][0]["bullets_hidden"] = ["Kept for another CV."]
+        one_line = T.render_html(two, "en")
+        check("a hidden line is not on the CV", "Kept for another CV" not in one_line)
+        check("…the line beside it still is", "Shipped it." in one_line)
+        check("…and its text is still in the document, ready to come back",
+              two["sections"][0]["items"][0]["bullets_hidden"] == ["Kept for another CV."])
         two["sections"][0]["items"][0]["bullets"] = ["Shipped it.", "", None]
         check("an empty bullet does not print an empty line",
               T.render_html(two, "en").count("<li>") == 1)

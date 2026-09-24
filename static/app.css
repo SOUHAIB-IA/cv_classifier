@@ -300,3 +300,7 @@ table.data td:nth-child(4), table.data td:nth-child(5), table.data td:nth-child(
 .it-bar { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; }
 .it-bar .sub { flex: 1; font-size: 11.5px; }
 .ico.off { color: var(--muted); }
+/* a line kept in the document but off this CV */
+.bul.hidden-bul { align-items: center; }
+.bul .hb { flex: 1; font-size: 12.5px; color: var(--muted); font-style: italic;
+           border: 1px dashed var(--line); border-radius: 6px; padding: 6px 9px; }
