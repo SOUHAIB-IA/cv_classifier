@@ -135,11 +135,30 @@ SORTS = {"first_seen": "j.first_seen", "posted": "j.posted_date",
          "company": "j.company", "title": "j.title", "fit": "a.fit_score",
          "ats": "m.ats_score", "prefilter": "j.prefilter_score",
          "updated": "a.updated_at"}
+# How much work an application takes, from the host that hosts the form. A
+# structured ATS form is a known quantity; anything else means the employer's
+# own page and whatever it asks for.
+APPLY_SQL = ("CASE WHEN j.apply_url LIKE '%greenhouse.io%' "
+             "       OR j.apply_url LIKE '%lever.co%' "
+             "       OR j.apply_url LIKE '%ashbyhq.com%' THEN 'form' "
+             "     WHEN j.apply_url LIKE '%linkedin.com%' "
+             "       OR j.apply_url LIKE '%indeed.%' THEN 'platform' "
+             "     WHEN j.apply_url IS NULL OR j.apply_url = '' THEN 'unknown' "
+             "     ELSE 'site' END")
+
+
 DATA_COLS = ("j.id AS job_id, j.company, j.title, j.location, j.source, j.board, "
              "j.stage, j.posted_date, j.first_seen, j.apply_url, j.jd_url, "
              "j.prefilter_score, j.language, "
              "a.status, a.decision, a.fit_score, a.date, a.cv_filename, a.notes, "
-             "m.ats_score, m.recommended_variant")
+             "m.ats_score, m.recommended_variant, "
+             f"{APPLY_SQL} AS apply_kind, "
+             # what a past pre-fill found still unanswered on that form: the
+             # only real measure of how long an application takes
+             "(SELECT json_extract(e.detail, '$.required_left') FROM events e "
+             " WHERE e.job_id = j.id AND e.kind IN ('submit','autoapply') "
+             " AND json_extract(e.detail, '$.required_left') IS NOT NULL "
+             " ORDER BY e.rowid DESC LIMIT 1) AS questions_left")
 
 
 def _data_where(p: dict) -> tuple[str, list]:
@@ -158,6 +177,9 @@ def _data_where(p: dict) -> tuple[str, list]:
         args.append(int(p["fit_min"]))
     if p.get("has_app"):
         where.append("a.job_id IS NOT NULL")
+    if p.get("apply_kind"):
+        where.append(f"{APPLY_SQL} = ?")
+        args.append(p["apply_kind"])
     return " AND ".join(where), args
 
 
@@ -181,12 +203,12 @@ def data_page(request: Request):
 @router.get("/api/data")
 def data(q: str = "", stage: str = "", source: str = "", status: str = "",
          decision: str = "", fit_min: str = "", has_app: str = "",
-         sort: str = "first_seen", dir: str = "desc",
+         apply_kind: str = "", sort: str = "first_seen", dir: str = "desc",
          page: int = 1, per: int = 50):
     pcfg, cfg, db = _ctx()
     p = {"q": q, "stage": stage, "source": source, "status": status,
          "decision": decision, "fit_min": fit_min or None, "has_app": has_app,
-         "sort": sort, "dir": dir}
+         "apply_kind": apply_kind, "sort": sort, "dir": dir}
     where, args = _data_where(p)
     total = db.one(f"SELECT COUNT(*) FROM jobs j "
                    f"LEFT JOIN applications a ON a.job_id=j.id "
@@ -204,6 +226,8 @@ def data(q: str = "", stage: str = "", source: str = "", status: str = "",
                 "SELECT source, COUNT(*) FROM jobs GROUP BY source ORDER BY 2 DESC")],
             "status": [dict(zip(("v", "n"), r)) for r in db.q(
                 "SELECT status, COUNT(*) FROM applications GROUP BY status ORDER BY 2 DESC")],
+            "apply_kind": [dict(zip(("v", "n"), r)) for r in db.q(
+                f"SELECT {APPLY_SQL}, COUNT(*) FROM jobs j GROUP BY 1 ORDER BY 2 DESC")],
         },
         "sorts": sorted(SORTS),
     })
@@ -212,7 +236,7 @@ def data(q: str = "", stage: str = "", source: str = "", status: str = "",
 @router.get("/api/data.csv")
 def data_csv(q: str = "", stage: str = "", source: str = "", status: str = "",
              decision: str = "", fit_min: str = "", has_app: str = "",
-             sort: str = "first_seen", dir: str = "desc"):
+             apply_kind: str = "", sort: str = "first_seen", dir: str = "desc"):
     """The rows you are looking at, as a file, so the data is yours to keep."""
     import csv
     import io
@@ -220,7 +244,8 @@ def data_csv(q: str = "", stage: str = "", source: str = "", status: str = "",
     rows = _data_rows(db, {"q": q, "stage": stage, "source": source,
                            "status": status, "decision": decision,
                            "fit_min": fit_min or None, "has_app": has_app,
-                           "sort": sort, "dir": dir}, 20_000, 0)
+                           "apply_kind": apply_kind, "sort": sort, "dir": dir},
+                          20_000, 0)
     buf = io.StringIO()
     cols = ["company", "title", "location", "source", "board", "stage", "status",
             "decision", "fit_score", "ats_score", "prefilter_score", "posted_date",

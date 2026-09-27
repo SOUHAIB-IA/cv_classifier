@@ -11,6 +11,8 @@ const COLS = [
   { k: "fit_score", t: "Fit", sort: "fit" },
   { k: "ats_score", t: "ATS", sort: "ats" },
   { k: "prefilter_score", t: "Pré-filtre", sort: "prefilter" },
+  { k: "apply_kind", t: "Candidature" },
+  { k: "questions_left", t: "Questions" },
   { k: "stage", t: "Étape" },
   { k: "status", t: "Statut" },
   { k: "posted_date", t: "Publiée", sort: "posted" },
@@ -20,7 +22,13 @@ const COLS = [
 
 let TH = { auto: 70, review: 40 };
 let state = { q: "", stage: "", status: "", source: "", fit_min: "", has_app: "",
-              sort: "first_seen", dir: "desc", page: 1, per: 50 };
+              apply_kind: "", sort: "first_seen", dir: "desc", page: 1, per: 50 };
+
+// How much work an application is, and how much of it is already known.
+const APPLY_FR = {
+  form: "formulaire ATS", site: "site de l'employeur",
+  platform: "LinkedIn / Indeed", unknown: "sans lien"
+};
 
 function fromUrl() {
   const u = new URLSearchParams(location.search);
@@ -64,6 +72,14 @@ function cell(r, k) {
     return r.prefilter_score.toFixed(2);
   if (k === "status" && r.status)
     return `<span class="tag ${r.status}">${STATUS_FR[r.status] || r.status}</span>`;
+  if (k === "apply_kind")
+    return `<span class="tag ${r.apply_kind === "form" ? "draft" : ""}">${esc(APPLY_FR[r.apply_kind] || r.apply_kind || "")}</span>`;
+  if (k === "questions_left")
+    // measured on a real fill: 0 means everything was answerable from your
+    // profile, which is as close to "easy apply" as this can honestly say
+    return r.questions_left == null ? '<span class="sub">–</span>'
+      : r.questions_left === 0 ? `<span class="fit hi">0</span>`
+      : `<span class="fit mid">${r.questions_left}</span>`;
   if (k === "stage") return `<span class="sub">${esc(STAGE_FR[r.stage] || r.stage || "")}</span>`;
   // some boards list every country a role is open in; one of those must not
   // become a column three hundred pixels tall
@@ -105,6 +121,10 @@ async function load() {
     fill("f-stage", d.facets.stage, "toutes");
     fill("f-status", d.facets.status, "tous");
     fill("f-source", d.facets.source, "toutes");
+    document.getElementById("f-apply").innerHTML =
+      `<option value="">toutes</option>` + (d.facets.apply_kind || []).filter(x => x.v)
+        .map(x => `<option value="${esc(x.v)}">${esc(APPLY_FR[x.v] || x.v)} (${x.n})</option>`).join("");
+    document.getElementById("f-apply").value = state.apply_kind || "";
   }
 }
 
@@ -122,6 +142,7 @@ document.getElementById("f-q").addEventListener("input", e => {
   qTimer = setTimeout(() => { state.q = e.target.value; state.page = 1; load(); }, 220);
 });
 bind("f-stage", "stage"); bind("f-status", "status"); bind("f-source", "source");
+bind("f-apply", "apply_kind");
 bind("f-fit", "fit_min", "input"); bind("f-app", "has_app"); bind("f-per", "per");
 
 document.getElementById("head").addEventListener("click", e => {
@@ -134,9 +155,9 @@ document.getElementById("head").addEventListener("click", e => {
 });
 
 document.getElementById("f-clear").onclick = () => {
-  state = { ...state, q: "", stage: "", status: "", source: "", fit_min: "", has_app: "", page: 1 };
+  state = { ...state, q: "", stage: "", status: "", source: "", fit_min: "", has_app: "", apply_kind: "", page: 1 };
   for (const id of ["f-q", "f-fit"]) document.getElementById(id).value = "";
-  for (const id of ["f-stage", "f-status", "f-source"]) document.getElementById(id).value = "";
+  for (const id of ["f-stage", "f-status", "f-source", "f-apply"]) document.getElementById(id).value = "";
   document.getElementById("f-app").checked = false;
   load();
 };

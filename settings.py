@@ -98,6 +98,16 @@ GROUPS: list[tuple[str, str, list[Field]]] = [
               "Au-delà, l'appel est abandonné. Une évaluation prend une à deux minutes.",
               min=30, max=900, step=10, unit="secondes"),
     ]),
+    ("apply", "Comment postuler", [
+        Field("submit.allowed_hosts", "pipeline",
+              "Sites dont le formulaire peut être rempli pour toi", "tags",
+              "Sur ces sites, un navigateur piloté ouvre le formulaire et le "
+              "remplit. Partout ailleurs tu postules à la main. "
+              "Un site qui détecte les robots peut refuser cette candidature, et "
+              "il a raison de le faire : ce navigateur s'annonce comme automatisé. "
+              "Retire l'hôte de la liste et ce site repasse en manuel, avec le "
+              "panneau « Remplir à la main » qui te donne tout à coller."),
+    ]),
     ("auto", "Envoi automatique", [
         Field("autoapply.enabled", "pipeline", "Envoyer sans me demander", "toggle",
               "Même activé, une candidature ne part que si le système n'a rien eu "

@@ -1012,6 +1012,33 @@ def main():
             check("an unknown sort falls back instead of reaching the query",
                   client.get("/api/data?sort=1;DROP TABLE jobs--").status_code == 200
                   and client.get("/api/data").json()["total"] == d["total"])
+            # how much work an application is, so the short ones can be found
+            ak = client.get("/api/data?per=5").json()
+            check("every posting is sorted by how you would apply to it",
+                  all(r["apply_kind"] in ("form", "site", "platform", "unknown")
+                      for r in ak["rows"])
+                  and any(f["v"] == "form" for f in ak["facets"]["apply_kind"]))
+            only = client.get("/api/data?apply_kind=form&per=5").json()
+            check("filtering on it narrows the list",
+                  only["total"] <= ak["total"]
+                  and all(r["apply_kind"] == "form" for r in only["rows"]))
+            check("an ATS form and an employer's own page are told apart",
+                  client.get("/api/data?apply_kind=site").json()["total"]
+                  != only["total"])
+            # a real fill is the only honest measure of how long a form is
+            with db.tx():
+                db.event("submit", jid, stage="prefilled", required_left=3)
+            row = next(r for r in client.get("/api/data?has_app=1&per=50").json()["rows"]
+                       if r["job_id"] == jid)
+            check("a form already filled once reports what it still asked",
+                  row["questions_left"] == 3, row["questions_left"])
+            with db.tx():
+                db.event("submit", jid, stage="prefilled", required_left=0)
+            row = next(r for r in client.get("/api/data?has_app=1&per=50").json()["rows"]
+                       if r["job_id"] == jid)
+            check("…and the most recent fill is the one that counts",
+                  row["questions_left"] == 0, row["questions_left"])
+
             csv_r = client.get("/api/data.csv?status=applied")
             check("the rows you filtered come out as a file",
                   csv_r.status_code == 200
