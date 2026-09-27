@@ -51,6 +51,9 @@ max_age_days  = 45
 # Drop ads asking for more years than this. The model caps those at <= 35
 # anyway, so evaluating them only spends budget. 0 disables.
 max_years_required = 2
+# Applications live at one company at once. Seven at the same employer in a
+# week reads as spraying to an ATS, and it is you who gets flagged. 0 = no cap.
+max_per_company = 2
 # Countries you can already work in. An ad that requires the right to work
 # elsewhere, offers no sponsorship or relocation, is dropped.
 # Remove the line to disable the check.

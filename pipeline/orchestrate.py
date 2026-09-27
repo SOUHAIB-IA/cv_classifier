@@ -160,8 +160,31 @@ def triage(db: DB, pcfg: pc.PipelineConfig, scr: Screener | None = None, *,
       dup_window_days (same ad, same verdict).
     - a pre-screen score under prefilter_min.
     """
-    stats = {"low_prescreen": 0, "duplicate": 0, "regional_twin": 0}
+    stats = {"low_prescreen": 0, "duplicate": 0, "regional_twin": 0, "company_cap": 0}
     rows = [dict(r) for r in db.q("SELECT * FROM jobs WHERE stage='candidate'")]
+
+    # Applying to many roles at one company in a few days is read as spraying by
+    # the ATS, and it is the applicant who gets flagged. The cap counts what is
+    # already live there and keeps the best-scoring candidates within it.
+    if pcfg.max_per_company:
+        live = dict(db.q(
+            "SELECT company, COUNT(*) FROM applications WHERE status IN "
+            "('pending','draft','staged','applied','interview','offer') GROUP BY company"))
+        rows.sort(key=lambda r: -(r["prefilter_score"] or 0))
+        keep = []
+        with db.tx():
+            for r in rows:
+                n = live.get(r["company"], 0)
+                if n >= pcfg.max_per_company:
+                    stats["company_cap"] += 1
+                    db.set_stage(r["id"], "skipped", status="processed")
+                    db.upsert_application(
+                        r["id"], decision="skip", status="skipped",
+                        notes=f"company cap: {n} already live at {r['company']}")
+                    continue
+                live[r["company"]] = n + 1
+                keep.append(r)
+        rows = keep
 
     groups: dict[str, list[dict]] = {}
     for r in rows:

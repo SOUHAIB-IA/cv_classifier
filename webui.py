@@ -528,6 +528,43 @@ def job_autoapply(job_id: str, payload: dict | None = None,
     return {"state": "running", "rehearse": rehearse}
 
 
+@router.get("/api/job/{job_id:path}/fillkit")
+def job_fillkit(job_id: str):
+    """Everything you would type into the form, ready to copy.
+
+    A page with bot detection will flag a browser Playwright is driving, and it
+    is right to: that browser announces itself as automated. The answer is not
+    to hide that, it is to fill the form yourself from your own browser. This
+    makes that a minute of copying rather than a retyping exercise.
+    """
+    pcfg, cfg, db = _ctx()
+    job = db.one("SELECT * FROM jobs WHERE id=?", job_id)
+    app = db.one("SELECT * FROM applications WHERE job_id=?", job_id)
+    if not job:
+        raise HTTPException(404, "unknown job")
+    profile = pc.load_profile()
+    lang = ((app["account"] if app else "") or job["language"] or "en").lower()
+    ident = SUB._identity(profile, lang)
+    LABELS = {"first_name": "Prénom", "last_name": "Nom", "full_name": "Nom complet",
+              "email": "E-mail", "phone": "Téléphone", "location": "Lieu",
+              "linkedin": "LinkedIn", "github": "GitHub", "portfolio": "Portfolio"}
+    path = ""
+    try:
+        path = str(T.cv_paths(pcfg, db, job_id)[0])
+    except T.TailorError:
+        pass
+    m = db.one("SELECT raw FROM matches WHERE job_id=?", job_id)
+    raw = json.loads(m["raw"] or "{}") if m else {}
+    return JSONResponse({
+        "fields": [{"label": LABELS.get(k, k), "value": v} for k, v in ident.items()],
+        "answers": [{"label": a["match"], "value": a["value"]}
+                    for a in profile.get("answers", [])],
+        "cv_path": path,
+        "apply_url": job["apply_url"] or job["jd_url"] or "",
+        "hook": raw.get("cover_letter_hook", ""),
+    })
+
+
 @router.get("/api/job/{job_id:path}")
 def job_data(job_id: str):
     pcfg, cfg, db = _ctx()

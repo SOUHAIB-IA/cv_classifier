@@ -561,7 +561,7 @@ function renderSend() {
         Ouvre l'annonce et postule avec le CV préparé ci-contre.</div>
       <div class="acts">
         <button class="primary" data-act="open-manual">Ouvrir l'annonce et montrer le CV</button>
-        <button data-act="reveal">Montrer le CV dans un dossier</button>
+        <button data-act="fillkit">Remplir à la main</button>
       </div>
       <div class="sub" style="margin-top:6px">Le CV s'ouvre dans une fenêtre, déjà sélectionné :
         tu le fais glisser sur la page, ou tu colles son chemin avec Ctrl+V dans le sélecteur de fichiers.</div>
@@ -595,9 +595,39 @@ function renderSend() {
       ${ready ? `<button data-act="rehearse">Répétition : tout vérifier, ne rien envoyer</button>` : ""}
       <button class="${ready ? "" : "primary"}" data-act="prefill">Remplir et me laisser la main</button>
       <button data-act="open-manual">Ouvrir le formulaire seul</button>
-      <button data-act="reveal">Montrer le CV</button>
+      <button data-act="fillkit">Remplir à la main</button>
     </div>
-    <div id="autostate"></div></div>`;
+    <div id="autostate"></div>
+    <div id="fillkit"></div></div>`;
+}
+
+// Filling the form yourself, without it being a retyping exercise. This is the
+// path a page with bot detection accepts, because there is nothing to detect:
+// your own browser, your own hands.
+async function fillKit() {
+  const box = $("fillkit");
+  if (!box) return;
+  if (box.dataset.open === "1") { box.dataset.open = "0"; box.innerHTML = ""; return; }
+  let k;
+  try { k = await api(`/api/job/${JOB_ID}/fillkit`); }
+  catch (e) { toast("Erreur : " + e.message); return; }
+  const row = (label, value) => `<div class="kit-row">
+    <span class="kl">${esc(label)}</span>
+    <code class="kv">${esc(value)}</code>
+    <button class="small" data-copy="${esc(value)}">Copier</button></div>`;
+  box.dataset.open = "1";
+  box.innerHTML = `<div class="panel" style="margin-top:12px">
+    <h3>À recopier dans le formulaire</h3>
+    <div class="why" style="margin-bottom:8px">Ouvre l'annonce dans <b>ton navigateur habituel</b>,
+      pas dans la fenêtre pilotée : une page qui détecte les robots refusera la seconde, à juste titre.</div>
+    ${k.fields.map(f => row(f.label, f.value)).join("")}
+    ${k.cv_path ? row("CV (chemin)", k.cv_path) : ""}
+    ${k.answers.length ? `<div class="kl" style="margin-top:10px">Tes réponses pré-écrites</div>
+      ${k.answers.map(a => row(a.label.slice(0, 34), a.value)).join("")}` : ""}
+    ${k.hook ? `<div class="kl" style="margin-top:10px">Accroche de lettre</div>${row("texte", k.hook)}` : ""}
+    <div class="acts" style="margin-top:10px">
+      <button data-act="reveal">Montrer le CV dans un dossier</button>
+    </div></div>`;
 }
 
 // The window stays visible the whole time, so you can watch and take over.
@@ -698,6 +728,12 @@ async function save() {
   $("b-save").disabled = false; $("b-save").textContent = "Enregistrer et régénérer le PDF";
 }
 document.addEventListener("click", async ev => {
+  const c = ev.target.closest("[data-copy]");
+  if (c) {
+    try { await navigator.clipboard.writeText(c.dataset.copy); toast("Copié."); }
+    catch (e) { prompt("Copie :", c.dataset.copy); }
+    return;
+  }
   const b = ev.target.closest("#b-copy");
   if (!b) return;
   try {
@@ -731,6 +767,10 @@ $("head").addEventListener("click", async ev => {
       const r = await api(`/api/job/${JOB_ID}/prefill`, {});
       if (r.profile_set === false) toast("profile.toml est vide : seul le CV sera joint.");
       pollPrefill();
+      b.disabled = false; b.textContent = label;
+      return;
+    } else if (act === "fillkit") {
+      await fillKit();
       b.disabled = false; b.textContent = label;
       return;
     } else if (act === "reveal" || act === "open-manual") {

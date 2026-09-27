@@ -167,6 +167,12 @@ GROUPS: list[tuple[str, str, list[Field]]] = [
               "modèle. 0 désactive ce filtre.", min=0, max=15),
         Field("prefilter.max_age_days", "pipeline", "Ne pas regarder les offres plus "
               "vieilles que", "number", "", min=1, max=730, unit="jours"),
+        Field("prefilter.max_per_company", "pipeline",
+              "Candidatures simultanées maximum par entreprise", "number",
+              "Postuler à sept rôles chez la même entreprise en quelques jours "
+              "est lu comme du spam par les plateformes, et c'est toi qui es "
+              "signalé. Les mieux notées sont gardées. 0 = pas de plafond.",
+              min=0, max=20),
         Field("prefilter.min_score", "pipeline", "Score de pré-filtre minimum", "number",
               "Avant tout appel au modèle, chaque offre reçoit un score gratuit selon "
               "les compétences qu'elle partage avec tes CV. En dessous, elle est "

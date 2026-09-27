@@ -39,6 +39,7 @@ class PipelineConfig:
     languages: list[str]
     max_age_days: int
     max_years_required: int
+    max_per_company: int
     work_authorization: list[str] | None
 
     sourcing_enabled: bool
@@ -103,6 +104,9 @@ def load(path: Path | None = None) -> PipelineConfig:
         languages=[x.lower() for x in f.get("languages", ["fr", "en"])],
         max_age_days=int(f.get("max_age_days", 45)),
         max_years_required=int(f.get("max_years_required", 0)),
+        # Seven applications to one company in a week reads as spraying to an
+        # ATS, whoever typed them. 0 = no cap.
+        max_per_company=int(f.get("max_per_company", 0)),
         work_authorization=([x.lower() for x in f["work_authorization"]]
                             if "work_authorization" in f else None),
         # false: keep running cycles, stop asking the boards for more.

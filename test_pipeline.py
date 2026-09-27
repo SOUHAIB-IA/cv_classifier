@@ -233,6 +233,34 @@ def main():
     check("dedupe key ignores (H/F) and case",
           dedupe_key("Co0", "ML Engineer A (H/F)") == dedupe_key("co0", "ml engineer a"))
 
+    # A page with bot detection flags the assisted browser, correctly, so the
+    # manual path has to be fast, and the pattern that reads as spraying has to
+    # stop being produced in the first place.
+    print("\n3b. not looking like a spray")
+    capped = replace(pcfg, max_per_company=2)
+    with db.tx():
+        for i in range(4):
+            db.upsert_job(job(50 + i, company="Everywhere", title=f"ML Engineer {i}"))
+    O.screen(db, capped, Screener(capped, cfg), log=lambda *a: None)
+    st = O.triage(db, capped, log=lambda *a: None)
+    live = db.q("SELECT a.status FROM applications a JOIN jobs j ON j.id=a.job_id "
+                "WHERE j.company='Everywhere' AND a.status<>'skipped'")
+    check("a company cap keeps only that many candidates",
+          st["company_cap"] >= 1 and len(live) <= 2, (st["company_cap"], len(live)))
+    kept = db.q("SELECT prefilter_score FROM jobs WHERE company='Everywhere' "
+                "AND stage='candidate'")
+    dropped = db.q("SELECT prefilter_score FROM jobs WHERE company='Everywhere' "
+                   "AND stage='skipped'")
+    check("…and keeps the best-scoring ones",
+          not kept or not dropped
+          or min(k[0] or 0 for k in kept) >= max(d[0] or 0 for d in dropped))
+    st0 = O.triage(db, replace(pcfg, max_per_company=0), log=lambda *a: None)
+    check("a cap of zero means no cap", st0["company_cap"] == 0)
+    with db.tx():
+        for i in range(4):
+            db.conn.execute("DELETE FROM applications WHERE job_id=?", (f"ashby:{50+i}",))
+            db.conn.execute("DELETE FROM jobs WHERE id=?", (f"ashby:{50+i}",))
+
     print("\n4. regional twins")
     with db.tx():
         for i, loc in enumerate(["Dubai, UAE (remote)", "France, Paris (remote)",
@@ -923,6 +951,22 @@ def main():
             r = client.post(f"/api/job/{jid}/prefill", headers=H)
             check("pre-filling is refused where it is not automated (LinkedIn, Indeed)",
                   r.status_code == 400, r.text[:80])
+
+            # a {path} converter swallows the suffix, so every GET sub-route has
+            # to be declared above the catch-all. Three have been caught by this.
+            k = client.get(f"/api/job/{jid}/fillkit")
+            check("the fill-kit route resolves, not the catch-all",
+                  k.status_code == 200 and "fields" in k.json(), k.text[:80])
+            kit = k.json()
+            check("it hands back what the form asks for, ready to paste",
+                  any(f["label"] == "E-mail" for f in kit["fields"])
+                  and all(f["value"] for f in kit["fields"]), kit["fields"][:2])
+            check("…the CV's path among it", kit["cv_path"].endswith(".pdf"))
+            for name, path in [("prefill", "prefill"), ("auto-apply", "autoapply"),
+                               ("fill-kit", "fillkit")]:
+                r = client.get(f"/api/job/{jid}/{path}")
+                check(f"GET /{path} is its own route, not a job id ending in it",
+                      r.status_code == 200 and "unknown job" not in r.text, r.text[:60])
 
             # showing the CV in a window is what makes a manual upload bearable
             r = client.post(f"/api/job/{jid}/reveal")

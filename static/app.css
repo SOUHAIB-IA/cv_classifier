@@ -306,3 +306,9 @@ table.data td:nth-child(4), table.data td:nth-child(5), table.data td:nth-child(
            border: 1px dashed var(--line); border-radius: 6px; padding: 6px 9px; }
 .fileline { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .fileline code { font-size: 11.5px; word-break: break-all; }
+.kit-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.kit-row .kl { flex: none; width: 108px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.kit-row .kv { flex: 1; min-width: 0; font-size: 12px; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+.panel .kl { font-size: 11.5px; font-weight: 700; color: var(--muted);
+             text-transform: uppercase; letter-spacing: .05em; }
