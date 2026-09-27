@@ -1,6 +1,20 @@
-anthropic==1.6.0
+# The portal and the pipeline
 fastapi==0.141.1
 Jinja2==3.1.6
 python-multipart==0.0.32
 uvicorn==0.53.0
 watchdog==6.0.0
+
+# Job boards, and any provider speaking the OpenAI chat-completions shape
+httpx==0.28.1
+
+# The tracker spreadsheet exported from the database
+openpyxl==3.1.5
+
+# Filling an employer's form in a visible window. It drives the Chrome already
+# installed (channel="chrome"), so no browser is downloaded.
+playwright==1.63.0
+
+# Only for [ai] backend = "api" with provider = "anthropic". Every other
+# provider goes over plain HTTP through httpx, so this stays optional.
+anthropic==1.6.0

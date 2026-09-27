@@ -3,23 +3,37 @@
 If you tailor your CV per application, you end up with eighty near-identical
 PDFs called `resume-3 (2).pdf` and no idea which one to send.
 
-cv-router fixes both halves of that:
-
-- **A watcher** files every CV you download into the right folder, renamed, with
-  no action from you.
-- **A portal** takes a job ad and tells you which CV to send and what to change
-  before you send it.
-
-An LLM reads the whole document — profile, skills, projects — so it does not get
-fooled by a filename or a stale job title at the top of the page.
+cv-router started there and grew into the whole arc: it files the CVs you
+already have, finds postings worth answering, picks the right CV for each one,
+rewrites it for that ad, and hands you a finished application to send.
 
 ```
 ~/Downloads/resume-3 (2).pdf
         │
-        ▼   read, classified, renamed, moved
+        ▼   read, classified, renamed, filed
 ~/Documents/CVs/2-Graduate/AI-ML-Engineering/
         Ada-LOVELACE_AI-ML-Engineer_RAG-MLOps_EN.pdf
+
+  job boards ──► free pre-screen ──► cv-router scores it ──► CV tailored
+                                                                  │
+                                              you read and edit it ▼
+                                                        you send it ──► tracked
 ```
+
+An LLM reads the whole document — profile, skills, projects — so nothing turns
+on a filename or a stale job title at the top of the page.
+
+## Four pages
+
+Everything is one local web app on <http://127.0.0.1:8770>. `Ctrl+K` searches
+every posting from any of them.
+
+| | |
+|---|---|
+| **Analyser** | paste an ad, get the CV to send and what to change first |
+| **Pipeline** | the journey of a posting, what is waiting for you, and the graphs |
+| **Données** | every posting ever seen: search, filter, sort, export as CSV |
+| **Réglages** | every setting, with the sentence that explains it |
 
 ## Job application pipeline
 
@@ -80,10 +94,15 @@ Keyword rules get all four wrong. Reading the document gets them right.
 - Python 3.11+
 - `pdftotext` — `sudo apt install poppler-utils`
 - `notify-send` for desktop notifications — `sudo apt install libnotify-bin`
-- An LLM, either:
+- **Google Chrome or Chromium** — renders the tailored CV to PDF, and opens an
+  employer's form when you ask it to. Playwright drives the Chrome you already
+  have (`channel="chrome"`), so no browser is downloaded.
+- A model, either:
   - **Claude Code** already installed and signed in — **no API key needed**, this
     is the default; or
-  - an Anthropic API key, billed separately.
+  - **any API key**: Anthropic, OpenAI, Gemini, Mistral, Groq, DeepSeek,
+    OpenRouter, a model running locally under Ollama, or anything else speaking
+    the OpenAI chat-completions shape. Pick it in Réglages.
 
 ## Install
 
@@ -93,26 +112,45 @@ cd cv-router
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
 
-cp config.example.toml config.toml   # then edit it — see below
-./.venv/bin/python indexer.py        # read your existing CVs
-./install.sh                         # start both services
+cp config.example.toml config.toml       # paths and your name
+cp pipeline.example.toml pipeline.toml   # the pipeline, if you want it
+cp profile.example.toml profile.toml     # what goes on an employer's form
+
+./.venv/bin/python indexer.py            # read your existing CVs
+./install.sh                             # install the services
 ```
 
-Portal: <http://127.0.0.1:8770>
+That installs three units: the watcher and the portal start immediately; the
+pipeline timer is installed but left off, because it fetches job boards and
+spends model calls. Turn it on when you mean to:
+
+```bash
+systemctl --user enable --now cv-router-pipeline.timer   # a cycle every 45 min
+```
+
+Then open <http://127.0.0.1:8770> and finish in **Réglages**.
 
 ### Configure
 
-Everything lives in `config.toml`. The parts you must set:
+Open **Réglages** and set it there. Every field carries the sentence that
+explains it, a value that would break the app is refused before it is written,
+and the files keep their comments because only the line that changed is
+rewritten.
+
+Two things are not in the UI, because they are yours and stay out of git:
+
+```bash
+cp profile.example.toml profile.toml   # your name, contacts, links, answers
+```
+
+`profile.toml` holds what goes on an employer's form and the three links that
+appear on every CV. Its `[[answers]]` section is the only source of answers to
+form questions: a question with no entry of yours is one the system will not
+answer, ever.
+
+And the taxonomy, in `config.toml`:
 
 ```toml
-[paths]
-cv_root   = "~/Documents/CVs"     # where sorted CVs go
-watch_dir = "~/Downloads"         # what to watch
-
-[behaviour]
-owner_name    = "Ada"             # so someone else's CV is never filed as yours
-owner_surname = "LOVELACE"
-
 [taxonomy.roles]                  # YOUR folders — invent whatever you need
 "AI-ML-Engineering"    = "AI-ML-Engineer"
 "Data-Engineering"     = "Data-Engineer"
@@ -229,6 +267,36 @@ comes from the cache, and the index is re-read only when it actually changed.
 
 `POST /api/match` with `{"job": "..."}` returns the same analysis as JSON.
 
+## Reading the CV before it goes out
+
+A tailored CV is a draft until you have read it. The editor beside it is the
+document behind the PDF, not a text box: every field is editable, anything that
+differs from your original is highlighted, and the A4 preview redraws as you
+type with a line saying whether it still fits on one page.
+
+- **Hide instead of delete.** A section, an entry or a single line can be taken
+  off this CV with its text kept in the document. It is the quickest way back
+  from two pages to one and, unlike deleting, reversible — so hiding is the
+  plain gesture and deleting asks first.
+- **Restructure.** Add and remove sections and entries, reorder them, edit the
+  contact links that appear on every CV.
+- **Choose the density,** or leave it to fit by itself.
+- **Undo,** `Ctrl+Z`, twenty steps.
+
+Nothing the model writes is free text: it may only replace wording it quotes
+exactly from your CV, so it cannot invent experience. The PDF is read back with
+`pdftotext` before it is used, the way an ATS reads it.
+
+The file is named after the job, not after you:
+
+```
+Pigment_Data-Engineer-Growth-Team_Ada_LOVELACE_2026-09-23.pdf
+```
+
+Company first, because that is what you search for in a file picker, and the
+role second, because two roles at one company must never share a name. Older
+files move over with `python -m pipeline.tailor --rename`.
+
 ## Commands
 
 | Command | What it does |
@@ -245,6 +313,13 @@ comes from the cache, and the index is re-read only when it actually changed.
 | `python test_routing.py` | filing logic, model stubbed |
 | `python test_index_concurrency.py` | concurrent index writers lose nothing |
 | `python test_pipeline.py` | the job pipeline — see PIPELINE.md |
+| `python run_pipeline.py` | one full cycle: fetch, screen, evaluate, tailor |
+| `python run_pipeline.py --no-fetch` | work through what is already collected |
+| `python -m pipeline.tailor --rename` | move older CVs to the job-first name |
+| `python -m pipeline.autoapply --list` | what could be sent, and what blocks the rest |
+| `python -m pipeline.submit --next` | fill the best staged application's form |
+| `python -m pipeline.tracker weekly` | response rate per fit bucket |
+| `python -m pipeline.calibrate` | thresholds that reproduce your own labels |
 
 Start with `--dry-run`: it prints every decision and its reasoning without
 touching a file.
@@ -259,8 +334,10 @@ tail -f data/cv-router.log
 
 ## Architecture
 
-Three processes, one shared library, no direct communication — everything meets
-on the filesystem.
+Three long-running processes, one shared library, no direct communication —
+everything meets on the filesystem. The diagram below is the filing half; the
+pipeline is a fourth, a timer firing `run_pipeline.py` every 45 minutes, and
+**[PIPELINE.md](PIPELINE.md)** covers it.
 
 ```
    ~/Downloads                                  browser
@@ -331,20 +408,34 @@ indexing run is never pruned.
 
 ## Your data never leaves your machine, except to the model
 
-`config.toml`, `data/` and your CVs are all gitignored. The only thing that goes
-out is the text of a CV, or a job ad you paste, sent to Anthropic for the call.
-If that is not acceptable for your documents, do not use this.
+`config.toml`, `pipeline.toml`, `profile.toml`, `data/`, `applications/` and
+your CVs are all gitignored. The API key lives in its own file, owner-readable
+only, and is never printed back.
+
+The only thing that leaves the machine is the text of a CV, or a job ad, sent
+to whichever model you chose. Pick Ollama in Réglages and even that stays here.
+If neither is acceptable for your documents, do not use this.
 
 ## Known limits
 
+- **A site that detects bots will refuse an assisted fill, and it is right to.**
+  The browser Playwright drives reports itself as automated. Nothing here hides
+  that: the answer is the "Remplir à la main" panel, which hands you every value
+  to paste into your own browser. Drop a host from
+  `[submit] allowed_hosts` and that site goes back to manual for good.
+- **Some job boards refuse any client that says what it is.** Rekrute answers
+  `403 Access denied` unless the caller claims to be a browser, so it is not
+  fetched. Paste the ad by hand instead; it enters the pipeline like any other.
+- **Applying to many roles at one employer reads as spam,** whoever typed them.
+  `[prefilter] max_per_company` caps how many are live at once.
 - **Scanned PDFs are skipped.** Extraction is `pdftotext`; an image-only PDF
   yields nothing and stays in Downloads. Add OCR if you need it.
 - **The CLI backend is slow** — 10–40s per call — and it consumes your Claude
   plan's usage allowance. Indexing 90 CVs is 90 calls, run `ai.index_workers` at
   a time (default 4). Drop to `--workers 1` if that trips a limit.
 - The watcher watches the top level of the download folder, not subfolders.
-- The portal UI and the notification text are in French. Everything else — code,
-  comments, config, prompts — is English.
+- The web interface and the notification text are in French. Everything else —
+  code, comments, config, prompts — is English.
 - Linux only. The daemon, the notifications and the installer all assume
   `systemd --user` and D-Bus.
 
