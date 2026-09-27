@@ -511,6 +511,15 @@ function setDirty(v) {
   const m = D?.cv?.meta;
   $("pageinfo").textContent = m ? `${m.pages ?? "?"} page(s)${m.edited_by_hand ? " · modifié à la main" : ""}` : "";
   $("b-pdf").href = D?.cv ? `/job/${JOB_ID}/cv.pdf?t=${Date.now()}` : "#";
+  // Uploading by hand means finding the file. Its name is here, and its full
+  // path is one click from the clipboard: paste that into the file picker's
+  // location bar and you never browse a folder of look-alike PDFs.
+  const dl = $("b-dl"), fl = $("fileline");
+  if (dl) dl.href = D?.cv ? `/job/${JOB_ID}/cv.pdf?download=1&t=${Date.now()}` : "#";
+  if (fl) fl.innerHTML = D?.cv
+    ? `<code>${esc(D.cv.pdf)}</code>
+       <button class="small" id="b-copy" data-path="${esc(D.cv.path || "")}">Copier le chemin</button>`
+    : "";
 }
 window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
@@ -684,6 +693,18 @@ async function save() {
   } catch (e) { toast("Échec : " + e.message); }
   $("b-save").disabled = false; $("b-save").textContent = "Enregistrer et régénérer le PDF";
 }
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("#b-copy");
+  if (!b) return;
+  try {
+    await navigator.clipboard.writeText(b.dataset.path);
+    toast("Chemin copié. Colle-le dans la barre du sélecteur de fichiers.");
+  } catch (e) {
+    // clipboard refused (no permission, or not a secure context): show it
+    prompt("Copie ce chemin :", b.dataset.path);
+  }
+});
+
 $("b-save").onclick = save;
 $("editor").addEventListener("click", ev => {
   if (ev.target.id === "b-undo") undo();

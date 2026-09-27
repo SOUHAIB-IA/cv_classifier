@@ -304,3 +304,5 @@ table.data td:nth-child(4), table.data td:nth-child(5), table.data td:nth-child(
 .bul.hidden-bul { align-items: center; }
 .bul .hb { flex: 1; font-size: 12.5px; color: var(--muted); font-style: italic;
            border: 1px dashed var(--line); border-radius: 6px; padding: 6px 9px; }
+.fileline { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fileline code { font-size: 11.5px; word-break: break-all; }

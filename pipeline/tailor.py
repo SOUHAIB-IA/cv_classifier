@@ -3,6 +3,7 @@
 
   python -m pipeline.tailor <job_id>        tailor one job's CV
   python -m pipeline.tailor --pending       tailor every job waiting for it
+  python -m pipeline.tailor --rename        move older CVs to company-first names
 
 The base CVs are PDFs from a CV builder; there is no editable source behind
 them. So each base CV is first extracted into a structured document, once, with
@@ -12,7 +13,7 @@ quotes exactly: it never rewrites freely, so it cannot invent experience and
 the layout stays under control. The result is rendered to PDF by headless
 Chrome and read back with pdftotext, the way an ATS would, before it is used.
 
-Output:  applications/<date>/<Owner>_<Variant>_<Lang>_<Company>_<Date>.pdf
+Output:  applications/<date>/<Company>_<Owner>_<Variant>_<Lang>_<Date>.pdf
          plus a .json beside it listing every edit applied or refused, and why.
 """
 from __future__ import annotations
@@ -623,10 +624,110 @@ def _slug(s: str) -> str:
 
 def output_path(pcfg: pc.PipelineConfig, cfg: cr.Config, job, variant: str,
                 lang: str) -> Path:
+    """The company first, because that is what you search for.
+
+    With your name first, every CV began with the same eighteen characters and
+    the company sat at the end, past where a file picker truncates: fourteen
+    files in this collection were indistinguishable in that column. Leading
+    with the company also reads properly to whoever receives it.
+    """
     d = date.today().isoformat()
     owner = cfg.file_prefix.replace("-", "_")
-    name = f"{owner}_{_variant_label(variant)}_{lang.upper()}_{_slug(job['company'])}_{d}.pdf"
-    return pcfg.applications_dir / d / name
+    # The role, not the CV variant, is the second word. Two roles at the same
+    # company on the same day built from the same base CV produced one name and
+    # the second tailoring overwrote the first; the role tells them apart, and
+    # is also what the recruiter expects to read.
+    stem = f"{_slug(job['company'])}_{_slug(job['title'])}_{owner}_{d}"
+    out = pcfg.applications_dir / d / f"{stem}.pdf"
+    # Re-tailoring a job overwrites its own file and nothing else.
+    n = 2
+    while out.is_file() and _owner_job(out) not in (None, job["id"]):
+        out = out.with_name(f"{stem}-{n}.pdf")
+        n += 1
+    return out
+
+
+def _owner_job(pdf: Path) -> str | None:
+    """Which job a CV on disk belongs to, from the sidecar written beside it."""
+    side = pdf.with_suffix(".json")
+    try:
+        return json.loads(side.read_text()).get("job_id")
+    except Exception:
+        return None
+
+
+def _heir_of(folder: Path, job_id: str) -> Path | None:
+    """The CV in this folder whose sidecar claims this job."""
+    for pdf in sorted(folder.glob("*.pdf")) if folder.is_dir() else []:
+        if _owner_job(pdf) == job_id:
+            return pdf
+    return None
+
+
+def rename_legacy(pcfg: pc.PipelineConfig, cfg: cr.Config, db: DB,
+                  *, dry: bool = True, log=print) -> list[tuple[str, str]]:
+    """Move CVs already on disk to the company-first name, sidecars included.
+
+    The database points at a CV by filename, so the row moves with the file or
+    neither does. A name already taken is left alone rather than overwritten.
+    """
+    done = []
+    rows = db.q("SELECT job_id, date, cv_filename, company, role "
+                "FROM applications WHERE cv_filename IS NOT NULL AND cv_filename <> ''")
+    for r in rows:
+        old_pdf = pcfg.applications_dir / (r["date"] or "") / r["cv_filename"]
+        if not old_pdf.is_file():
+            # the row's date and the folder the file landed in can disagree,
+            # so look for it the way cv_paths does before giving up
+            found = list(pcfg.applications_dir.rglob(r["cv_filename"]))
+            if found:
+                old_pdf = found[0]
+        if not old_pdf.is_file():
+            # Two jobs used to be able to share one filename, so an earlier row
+            # may already have moved the file this one points at. Follow it
+            # rather than leaving the row pointing at nothing.
+            gone = pcfg.applications_dir / (r["date"] or "")
+            heir = _heir_of(gone, r["job_id"])
+            if heir and not dry:
+                with db.tx():
+                    db.conn.execute("UPDATE applications SET cv_filename=? WHERE job_id=?",
+                                    (heir.name, r["job_id"]))
+                log(f"  relink {r['company']} -> {heir.name}")
+            continue
+        owner = cfg.file_prefix.replace("-", "_")
+        stem = (f"{_slug(r['company'] or '')}_{_slug(r['role'] or '')}"
+                f"_{owner}_{r['date']}")
+        if old_pdf.stem == stem:
+            continue
+        # two roles can slug to the same thing once truncated, so the same
+        # suffix output_path uses applies here
+        new_pdf = old_pdf.with_name(stem + ".pdf")
+        n = 2
+        while new_pdf.exists() and _owner_job(new_pdf) not in (None, r["job_id"]):
+            new_pdf = old_pdf.with_name(f"{stem}-{n}.pdf")
+            n += 1
+        if new_pdf == old_pdf:
+            continue
+        if new_pdf.exists():
+            # the properly named file for this job is already there and the old
+            # one is a leftover: point the row at the good one, move nothing
+            if not dry:
+                with db.tx():
+                    db.conn.execute("UPDATE applications SET cv_filename=? WHERE job_id=?",
+                                    (new_pdf.name, r["job_id"]))
+                log(f"  relink {r['company']} -> {new_pdf.name}")
+            continue
+        done.append((old_pdf.name, new_pdf.name))
+        if dry:
+            continue
+        for suffix in (".pdf", ".json", ".cv.json"):
+            src = old_pdf.with_suffix(suffix)
+            if src.is_file():
+                src.rename(new_pdf.with_suffix(suffix))
+        with db.tx():
+            db.conn.execute("UPDATE applications SET cv_filename=? WHERE job_id=?",
+                            (new_pdf.name, r["job_id"]))
+    return done
 
 
 def tailor_job(db: DB, pcfg: pc.PipelineConfig, cfg: cr.Config, job_id: str, *,
@@ -779,9 +880,20 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("job_id", nargs="?")
     ap.add_argument("--pending", action="store_true")
+    ap.add_argument("--rename", action="store_true",
+                    help="rename CVs already on disk company-first")
+    ap.add_argument("--yes", action="store_true", help="do it, do not just show it")
     args = ap.parse_args()
     pcfg, cfg = pc.load(), cr.load_config()
     db = DB(pcfg.db)
+    if args.rename:
+        moves = rename_legacy(pcfg, cfg, db, dry=not args.yes)
+        for a, b in moves:
+            print(f"  {a}\n->{b}")
+        print(f"{len(moves)} file(s) "
+              + ("renamed" if args.yes else "would be renamed; add --yes to do it"))
+        return 0
+
     ids = pending_jobs(db) if args.pending else [args.job_id] if args.job_id else []
     if not ids:
         print("nothing to tailor")

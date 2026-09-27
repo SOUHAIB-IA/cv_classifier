@@ -463,13 +463,16 @@ def add_job(payload: dict, x_cv_router: str | None = Header(default=None)):
 
 # --------------------------------------------------------------------- job --
 @router.get("/job/{job_id:path}/cv.pdf")
-def cv_pdf(job_id: str):
+def cv_pdf(job_id: str, download: int = 0):
     pcfg, cfg, db = _ctx()
     try:
         pdf, _, _ = T.cv_paths(pcfg, db, job_id)
     except T.TailorError as e:
         raise HTTPException(404, str(e))
+    # inline for the preview; as a download it keeps its real name, so the file
+    # that lands in Downloads is the one you can find again
     return FileResponse(pdf, media_type="application/pdf",
+                        filename=pdf.name if download else None,
                         headers={"Cache-Control": "no-store"})
 
 
@@ -552,7 +555,7 @@ def job_data(job_id: str):
         try:
             cv = T.load_cv(pcfg, cfg, db, job_id)
             out["cv"] = {"doc": cv["doc"], "base": cv["base"], "meta": cv["meta"],
-                         "pdf": cv["pdf"].name}
+                         "pdf": cv["pdf"].name, "path": str(cv["pdf"])}
         except T.TailorError as e:
             out["cv_error"] = str(e)
     return JSONResponse(out)

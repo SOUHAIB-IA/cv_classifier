@@ -337,6 +337,64 @@ def main():
     else:
         print("  skip  render checks (no Chrome)")
 
+    # --------------------------------------------------------- CV file names
+    # Every name used to start with the same owner prefix and end with the
+    # company, past where a file picker truncates. Worse, two roles at one
+    # company on one day shared a name and the second overwrote the first.
+    print("\n6b. the name of the file you upload")
+    nj1 = job(90, company="Alan", title="Fullstack Software Engineer - Billing")
+    nj2 = job(91, company="Alan", title="Fullstack Software Engineer - Payments")
+    var = "2-Graduate/AI-ML-Engineering/cv-0.pdf"
+    p1 = T.output_path(pcfg, cfg, nj1, var, "en")
+    check("the company is the first thing in the name",
+          p1.name.startswith("Alan_"), p1.name)
+    check("the role is the second, so two roles never look alike",
+          "Fullstack-Software-Engineer" in p1.name, p1.name)
+    check("your name is in it, for whoever receives it",
+          cfg.file_prefix.replace("-", "_") in p1.name, p1.name)
+    p1.parent.mkdir(parents=True, exist_ok=True)
+    p1.write_bytes(b"%PDF-1.4\n")
+    p1.with_suffix(".json").write_text(json.dumps({"job_id": nj1["id"]}))
+    check("re-tailoring the same job overwrites its own file",
+          T.output_path(pcfg, cfg, nj1, var, "en") == p1)
+    p2 = T.output_path(pcfg, cfg, nj2, var, "en")
+    check("a different role at the same company gets its own file", p2 != p1, p2.name)
+    clash = job(92, company="Alan", title="Fullstack Software Engineer - Billing Platform")
+    p3 = T.output_path(pcfg, cfg, clash, var, "en")
+    check("two roles that shorten to the same thing still do not collide",
+          p3 != p1 and p3.name.endswith("-2.pdf"), p3.name)
+
+    # the migration moves the row with the file, or neither
+    with db.tx():
+        db.upsert_job(nj1)
+        db.upsert_application(nj1["id"], company="Alan", role=nj1["title"],
+                              date=p1.parent.name, cv_filename="old_name.pdf",
+                              status="draft")
+    old_pdf = p1.parent / "old_name.pdf"
+    old_pdf.write_bytes(b"%PDF-1.4\n")
+    old_pdf.with_suffix(".json").write_text(json.dumps({"job_id": nj1["id"]}))
+    T.rename_legacy(pcfg, cfg, db, dry=False, log=lambda *a: None)
+    row = db.one("SELECT cv_filename FROM applications WHERE job_id=?", nj1["id"])
+    check("a row pointing at a leftover is relinked to the right file",
+          row["cv_filename"] == p1.name and old_pdf.is_file(), row["cv_filename"])
+    # and the ordinary case: no properly named file waiting, so the file moves
+    p1.unlink(); p1.with_suffix(".json").unlink()
+    with db.tx():
+        db.upsert_application(nj1["id"], cv_filename="old_name.pdf")
+    moved = T.rename_legacy(pcfg, cfg, db, dry=True, log=lambda *a: None)
+    check("a dry run reports without touching anything",
+          any(a == "old_name.pdf" for a, _ in moved) and old_pdf.is_file())
+    T.rename_legacy(pcfg, cfg, db, dry=False, log=lambda *a: None)
+    row = db.one("SELECT cv_filename FROM applications WHERE job_id=?", nj1["id"])
+    check("the file moved and the row moved with it",
+          not old_pdf.is_file()
+          and (p1.parent / row["cv_filename"]).is_file(), row["cv_filename"])
+    check("its sidecar came along",
+          (p1.parent / row["cv_filename"]).with_suffix(".json").is_file())
+    with db.tx():
+        db.conn.execute("DELETE FROM applications WHERE job_id=?", (nj1["id"],))
+        db.conn.execute("DELETE FROM jobs WHERE id=?", (nj1["id"],))
+
     # ------------------------------------------------------------------ submit
     print("\n7. submission guard rails")
     src = (HERE / "pipeline" / "submit.py").read_text()
