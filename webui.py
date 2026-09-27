@@ -657,6 +657,42 @@ def job_prefill(job_id: str, x_cv_router: str | None = Header(default=None)):
     return {"state": "running", "profile_set": bool(ident)}
 
 
+@router.post("/api/job/{job_id:path}/reveal")
+def job_reveal(job_id: str, x_cv_router: str | None = Header(default=None)):
+    """Open the file manager with this CV already selected.
+
+    An employer's upload button opens a file picker wherever it last was, and
+    the CVs are filed by date, so the right one is several clicks away however
+    well it is named. Selected in a window, it is one drag onto the page.
+
+    FileManager1.ShowItems selects the file; xdg-open on its folder is the
+    fallback for a desktop without it, and shows the folder rather than
+    nothing.
+    """
+    _guard(x_cv_router)
+    pcfg, cfg, db = _ctx()
+    try:
+        pdf, _, _ = T.cv_paths(pcfg, db, job_id)
+    except T.TailorError as e:
+        raise HTTPException(404, str(e))
+    try:
+        env = {**os.environ, **SUB.display_env()}
+    except SUB.NoDisplay as e:
+        raise HTTPException(400, str(e))
+
+    shown = subprocess.run(
+        ["dbus-send", "--session", "--dest=org.freedesktop.FileManager1",
+         "--type=method_call", "/org/freedesktop/FileManager1",
+         "org.freedesktop.FileManager1.ShowItems",
+         f"array:string:{pdf.as_uri()}", "string:"],
+        capture_output=True, text=True, env=env, timeout=20)
+    if shown.returncode != 0:
+        subprocess.Popen(["xdg-open", str(pdf.parent)], env=env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"ok": True, "selected": False, "path": str(pdf)}
+    return {"ok": True, "selected": True, "path": str(pdf)}
+
+
 @router.post("/api/job/{job_id:path}/status")
 def job_status(job_id: str, payload: dict, x_cv_router: str | None = Header(default=None)):
     """approve | skip  (review queue)   validate  (draft -> ready to submit)

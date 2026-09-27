@@ -924,6 +924,24 @@ def main():
             check("pre-filling is refused where it is not automated (LinkedIn, Indeed)",
                   r.status_code == 400, r.text[:80])
 
+            # showing the CV in a window is what makes a manual upload bearable
+            r = client.post(f"/api/job/{jid}/reveal")
+            check("revealing the CV needs the X-CV-Router header", r.status_code == 403)
+            r = client.post("/api/job/ashby:0/reveal", headers=H)
+            check("a job with no tailored CV says so instead of opening a window",
+                  r.status_code == 404, r.text[:80])
+            r = client.get(f"/job/{jid}/cv.pdf?download=1")
+            check("the download carries the CV's real filename",
+                  r.status_code == 200
+                  and ".pdf" in r.headers.get("content-disposition", "")
+                  and "attachment" in r.headers.get("content-disposition", ""),
+                  r.headers.get("content-disposition"))
+            check("…and without it the PDF stays inline, for the preview",
+                  "attachment" not in
+                  client.get(f"/job/{jid}/cv.pdf").headers.get("content-disposition", ""))
+            check("the job page carries the CV's path, for the clipboard",
+                  client.get(f"/api/job/{jid}").json()["cv"]["path"].endswith(".pdf"))
+
             r = client.get(f"/api/job/{jid}/autoapply")
             check("the auto-apply state route resolves, not the catch-all",
                   r.status_code == 200 and r.json()["state"] == "idle", r.text[:80])

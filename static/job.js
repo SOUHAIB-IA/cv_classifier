@@ -560,9 +560,12 @@ function renderSend() {
       <div class="why">LinkedIn et Indeed ne sont pas automatisés : ni remplissage, ni envoi.
         Ouvre l'annonce et postule avec le CV préparé ci-contre.</div>
       <div class="acts">
-        <a class="btn primary" target="_blank" rel="noopener" href="${esc(D.job.apply_url || "#")}">Ouvrir l'annonce</a>
-        <a class="btn" target="_blank" href="/job/${encodeURIComponent(JOB_ID)}/cv.pdf">Ouvrir le PDF</a>
-      </div></div>`;
+        <button class="primary" data-act="open-manual">Ouvrir l'annonce et montrer le CV</button>
+        <button data-act="reveal">Montrer le CV dans un dossier</button>
+      </div>
+      <div class="sub" style="margin-top:6px">Le CV s'ouvre dans une fenêtre, déjà sélectionné :
+        tu le fais glisser sur la page, ou tu colles son chemin avec Ctrl+V dans le sélecteur de fichiers.</div>
+      </div>`;
     return;
   }
 
@@ -591,7 +594,8 @@ function renderSend() {
       ${ready && !aa.rehearse ? `<button class="primary" data-act="autoapply">Remplir et envoyer</button>` : ""}
       ${ready ? `<button data-act="rehearse">Répétition : tout vérifier, ne rien envoyer</button>` : ""}
       <button class="${ready ? "" : "primary"}" data-act="prefill">Remplir et me laisser la main</button>
-      <a class="btn" target="_blank" rel="noopener" href="${esc(D.job.apply_url || "#")}">Ouvrir le formulaire seul</a>
+      <button data-act="open-manual">Ouvrir le formulaire seul</button>
+      <button data-act="reveal">Montrer le CV</button>
     </div>
     <div id="autostate"></div></div>`;
 }
@@ -727,6 +731,25 @@ $("head").addEventListener("click", async ev => {
       const r = await api(`/api/job/${JOB_ID}/prefill`, {});
       if (r.profile_set === false) toast("profile.toml est vide : seul le CV sera joint.");
       pollPrefill();
+      b.disabled = false; b.textContent = label;
+      return;
+    } else if (act === "reveal" || act === "open-manual") {
+      // Opening the employer's page is useless if the CV is then three folders
+      // away, so both happen together: the file manager opens on the file and
+      // its path goes to the clipboard, for whichever way you prefer to upload.
+      const path = D.cv?.path || "";
+      try { if (path) await navigator.clipboard.writeText(path); } catch (e) { /* not fatal */ }
+      if (act === "open-manual" && D.job.apply_url)
+        window.open(D.job.apply_url, "_blank", "noopener");
+      try {
+        const r = await api(`/api/job/${JOB_ID}/reveal`, {});
+        toast(r.selected
+          ? "CV sélectionné dans un dossier. Glisse-le sur la page, ou Ctrl+V dans le sélecteur."
+          : "Dossier du CV ouvert. Son chemin est dans le presse-papier.");
+      } catch (e) {
+        toast(path ? "Chemin du CV copié : Ctrl+V dans le sélecteur de fichiers."
+                   : "Erreur : " + e.message);
+      }
       b.disabled = false; b.textContent = label;
       return;
     } else if (act === "autoapply" || act === "rehearse") {
