@@ -199,6 +199,20 @@ def main() -> int:
         for bad in ("..%2F..%2Fconfig.toml", "..%2Fcanada.toml"):
             check(f"path traversal is refused ({bad[:12]})",
                   c.get(f"/canada/api/file/{bad}").status_code == 404)
+        # The page called api(path, {method, body}) while the shared helper's
+        # signature is api(path, body, method). The server received
+        # {"method":"POST","body":{...}}, looked for `jd`, found nothing, and
+        # told the user the ad was too short. Server-side tests could not see
+        # it, so the call shape is checked here.
+        js = (ROOT / "static" / "canada.js").read_text(encoding="utf-8")
+        import re as _re
+        bad = _re.findall(r"api\([^)]*?\{\s*method\s*:", js, _re.S)
+        check("canada.js passes the body as api()'s second argument",
+              not bad, bad)
+        helper = (ROOT / "static" / "common.js").read_text(encoding="utf-8")
+        check("...which is still what the shared helper expects",
+              "async function api(path, body, method)" in helper)
+
         check("the pipeline pages still answer",
               c.get("/pipeline").status_code == 200
               and c.get("/data").status_code == 200

@@ -69,14 +69,20 @@ async function run() {
   $("c-run").disabled = true;
   $("c-head").textContent = "Adaptation en cours…";
   $("c-out").hidden = false;
+  $("c-score").innerHTML = `<div class="sub">Conversion, notation, puis rendu du
+    PDF et du DOCX. Le rendu essaie plusieurs densités pour tenir en une page,
+    donc compte une vingtaine de secondes.</div>`;
+  $("c-report").innerHTML = "";
+  $("c-changes").innerHTML = "";
+  $("c-files").innerHTML = "";
   try {
+    // api(path, body) — the body is the second positional argument, and
+    // passing {method, body} instead sent the server {"method":"POST",...},
+    // where it looked for `jd`, found nothing, and said the ad was too short.
     const d = await api("/canada/api/tailor", {
-      method: "POST",
-      body: {
-        jd, company: $("c-company").value, city: $("c-city").value,
-        role: $("c-role").value || null, lang: $("c-lang").value || null,
-        no_bullets: $("c-nobullets").checked,
-      },
+      jd, company: $("c-company").value, city: $("c-city").value,
+      role: $("c-role").value || null, lang: $("c-lang").value || null,
+      no_bullets: $("c-nobullets").checked,
     });
     $("c-head").textContent = d.stem;
     $("c-score").innerHTML =
@@ -101,10 +107,8 @@ async function lint() {
   $("c-changes").innerHTML = "";
   $("c-files").innerHTML = "";
   try {
-    const d = await api("/canada/api/check", {
-      method: "POST",
-      body: { role: $("c-role").value || "de", lang: $("c-lang").value || "en" },
-    });
+    const d = await api("/canada/api/check",
+      { role: $("c-role").value || "de", lang: $("c-lang").value || "en" });
     $("c-report").innerHTML = renderReport(d);
   } catch (e) { $("c-report").innerHTML = `<div class="sub">${esc(e.message)}</div>`; }
 }
