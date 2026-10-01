@@ -16,3 +16,8 @@ graphify-out/graph.json
 pipeline.toml
 profile.toml
 applications/
+
+# Canada Resume Studio: your own config and its output. The example config is
+# tracked; canada.toml is yours. Output never goes near watch_dir.
+canada_module/canada.toml
+canada_module/output/

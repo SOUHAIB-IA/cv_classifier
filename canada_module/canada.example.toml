@@ -1,0 +1,54 @@
+# Canada Resume Studio — the module's own config. Copy to canada.toml.
+#
+# This file is separate from config.toml and pipeline.toml on purpose: the
+# module is independent, and nothing here changes how the watcher, the indexer
+# or the pipeline behave.
+
+[paths]
+# Where the Canadian resumes land. Keep this inside the repo: the watcher only
+# looks at watch_dir, non-recursively, so output here is never ingested.
+output_dir = "canada_module/output"
+# The rules. Edit canada_rules.yaml rather than this line.
+rules_file = "canada_module/canada_rules.yaml"
+
+[defaults]
+# "en" for English Canada, "fr_qc" for a Quebec French CV.
+lang = "en"
+# Default target, used when a posting gives no location.
+province = "ON"
+city = ""
+
+[contact]
+# city_province | city_country | full_address | omit
+# city_province once you are in Canada; city_country while you are not.
+location_mode = "city_country"
+city = "Casablanca"
+country = "Morocco"
+# Appended in city_country mode. Empty string to leave it off.
+overseas_suffix = "open to relocation to Canada"
+
+[work_authorization]
+# omit | one_line | relocation_note.  omit is the researched default: U of T
+# Mississauga tells international applicants to leave visa status off a resume.
+mode = "omit"
+# The `one_line` mode makes a factual claim, so the module refuses to write it
+# unless you set this to true yourself.
+authorized_to_work = false
+
+[education]
+# none | equivalence_line | eca_reference
+foreign_credential_mode = "equivalence_line"
+# Left empty on purpose. Only an assessing body can state the Canadian level of
+# a Moroccan Diplôme d'Ingénieur, and the module will not assert one for you.
+# Fill this in once you have an assessment, e.g. "Canadian master's equivalent".
+equivalence_text = ""
+# Only used when foreign_credential_mode = "eca_reference".
+eca_body = ""
+eca_reference = ""
+
+[render]
+# "" = auto-detect the newest Chrome/Chromium install.
+chrome_bin = ""
+# Emit a .docx beside every .pdf. The sources disagree on which an ATS prefers,
+# so the default is both. See RESEARCH.md.
+emit_docx = true

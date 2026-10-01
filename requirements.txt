@@ -18,3 +18,9 @@ playwright==1.63.0
 # Only for [ai] backend = "api" with provider = "anthropic". Every other
 # provider goes over plain HTTP through httpx, so this stays optional.
 anthropic==1.6.0
+
+# canada_module reads its rules from canada_rules.yaml. Already present as a
+# transitive dependency in most environments, declared here because the module
+# imports it directly — the same omission that left httpx, openpyxl and
+# playwright undeclared until a clean venv caught it.
+PyYAML==6.0.3

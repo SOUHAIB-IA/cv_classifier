@@ -1,0 +1,438 @@
+# Canadian resume rules, declarative.
+#
+# The checker reads `checks` to decide what to look for and how loudly to
+# complain. The converter reads everything else. Nothing here is hard-coded in
+# Python, so a rule you learn tomorrow is a line you edit here.
+#
+# Every rule carries `source`, one of:
+#   gov        a government source (Job Bank, Canada.ca, Québec.ca, OQLF,
+#              Portail linguistique du Canada)
+#   career     a university career centre (UBC, U of T Mississauga)
+#   ats        ATS vendor documentation (Greenhouse, Workday)
+#   practice   market convention with no authority behind it — the ones to
+#              revisit first when something does not land
+# See RESEARCH.md for the quotation behind each one.
+
+version: 1
+updated: 2026-10-01
+
+# --------------------------------------------------------------------------
+document:
+  paper: letter               # source: practice. No gov/career source states a
+                              # size; Letter is the North American standard.
+  pages:
+    prefer: 1
+    max: 2                    # source: gov (Job Bank, Québec.ca, OQLF)
+  margins_inch:
+    min: 0.75
+    max: 1.0                  # source: career (UTM)
+  font:
+    size_pt: {min: 10, max: 12}    # source: career (UBC 10-12, UTM 11-12)
+    one_family_throughout: true
+    allowed:                  # source: career (UBC)
+      - Calibri
+      - Carlito                # metric clone of Calibri, what this box has
+      - Arial
+      - Liberation Sans        # metric clone of Arial
+      - Times New Roman
+      - Cambria
+      - Caladea                # metric clone of Cambria
+      - Garamond
+      - EB Garamond
+      - Verdana
+      - Trebuchet MS
+      - Book Antiqua
+  layout:                     # source: ats (Greenhouse parse-failure doc) +
+    columns: 1                #         career (UTM)
+    tables: forbid
+    headers_footers: forbid
+    contact_in_header: forbid
+    graphics: forbid
+    icons: forbid
+    photo: forbid
+    text_boxes: forbid
+    italics: discourage
+    underline: discourage     # except real hyperlinks
+    shading: discourage
+  output:
+    primary: pdf
+    also: [docx]              # UTM says avoid PDF for ATS, Greenhouse accepts
+                              # it. Unresolved, so ship both. See RESEARCH.md.
+    pdf_text_must_be_selectable: true
+
+# --------------------------------------------------------------------------
+# Content that must not appear. `detect` is what the checker greps for; it is
+# deliberately broad, and a hit is reported rather than silently removed.
+forbidden_content:
+  - id: photo
+    why: >
+      Not the norm in Canada and can lower your chances (Job Bank); Greenhouse
+      lists graphics and photos as a parse failure. A PDF does not say what an
+      image IS, so this fires on any embedded image and names the doubt.
+    source: gov
+    severity: fail
+    detect: {pdf_has_image: true}
+  - id: date_of_birth
+    why: "Job Bank and OQLF both exclude age and date of birth."
+    source: gov
+    severity: fail
+    detect:
+      patterns:
+        - '(?i)\b(date of birth|d\.?o\.?b\.?|born)\b'
+        - '(?i)\b(date de naissance|né[e]? le)\b'
+  - id: age
+    source: gov
+    severity: fail
+    detect:
+      patterns:
+        - '(?i)\bage\s*[:=]\s*\d{1,2}\b'
+        - '(?i)\b(âge)\s*[:=]'
+        - '(?i)\b\d{1,2}\s+(years old|ans)\b'
+  - id: marital_status
+    source: gov
+    severity: fail
+    detect:
+      patterns:
+        # The label, not the value: "single" also means "a single base", and
+        # that false positive fired on the first real CV this linter saw.
+        - '(?i)\b(marital status|marital|matrimonial)\b'
+        - '(?i)\b[ée]tat\s+(matrimonial|civil)\b'
+        - '(?i)\b(c[ée]libataire|veuf|veuve)\b'
+        - '(?i)\b(married|divorced|widowed)\s*[,;]?\s*(no )?(children|kids)\b'
+  - id: nationality
+    source: gov
+    severity: fail
+    detect:
+      patterns:
+        - '(?i)\b(nationality|citizenship)\s*[:=]'
+        - '(?i)\b(nationalité)\s*[:=]'
+  - id: gender
+    source: gov
+    severity: fail
+    detect:
+      patterns: ['(?i)\b(gender|sex|genre|sexe)\s*[:=]']
+  - id: religion
+    source: gov
+    severity: fail
+    detect: {patterns: ['(?i)\b(religion|religious)\b']}
+  - id: sin
+    why: "Never include your Social Insurance Number (Job Bank)."
+    source: gov
+    severity: fail
+    detect:
+      patterns:
+        - '(?i)\b(social insurance|S\.?I\.?N\.?)\b'
+        - '(?i)\b(num[ée]ro d.assurance sociale|NAS)\b'
+        - '\b\d{3}[ -]\d{3}[ -]\d{3}\b'
+  - id: visa_status
+    why: "UTM tells international students to leave visa status off the resume."
+    source: career
+    severity: warn               # warn, not fail: work_authorization.mode may
+    detect:                      # legitimately put one line back
+      patterns:
+        - '(?i)\b(visa status|work permit|study permit|PGWP)\b'
+        - '(?i)\b(permis de travail|permis d.[ée]tudes)\b'
+  - id: street_address
+    why: "Career centres cut the address; ATS cannot read it from a header."
+    source: career
+    severity: warn
+    detect:
+      patterns:
+        - '(?i)\b\d{1,5}\s+(rue|avenue|ave\.?|street|st\.?|boulevard|blvd\.?)\b'
+        - '\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b'      # Canadian postal code
+  - id: references_section
+    why: "References go on a separate sheet, on request (Job Bank, OQLF, UTM)."
+    source: gov
+    severity: fail
+    detect:
+      patterns:
+        - '(?i)^\s*(references|r[ée]f[ée]rences)\s*:?\s*$'
+        - '(?i)references available upon request'
+        - '(?i)r[ée]f[ée]rences (disponibles )?sur demande'
+  - id: signature
+    source: practice
+    severity: warn
+    detect: {patterns: ['(?i)\b(signature|signed)\s*:']}
+
+# --------------------------------------------------------------------------
+contact:
+  required: [name, email, phone]
+  optional: [linkedin, github, portfolio]
+  location:
+    # city_province    "Toronto, ON"              — the default
+    # city_country     "Casablanca, Morocco"      — honest while overseas
+    # full_address     street + city + province + postal code
+    # omit             no location at all
+    mode: city_province
+    overseas_suffix:
+      en: "open to relocation to Canada"
+      fr_qc: "ouvert à une relocalisation au Canada"
+    province_codes: [AB, BC, MB, NB, NL, NS, NT, NU, ON, PE, QC, SK, YT]
+  phone_format:
+    en: "+1 (###) ###-####"
+    keep_international_as_is: true     # a +212 number stays +212
+  links_as_labels: true                # "LinkedIn" hyperlinked, not a raw URL
+
+# --------------------------------------------------------------------------
+work_authorization:
+  # omit            nothing on the resume            — default, see RESEARCH.md
+  # one_line        a single explicit line
+  # relocation_note folded into the contact location
+  mode: omit
+  templates:
+    one_line:
+      en: "Work authorization: eligible to work in Canada."
+      fr_qc: "Autorisation de travail : admissible à travailler au Canada."
+    relocation_note:
+      en: "Casablanca, Morocco — open to relocation to Canada"
+      fr_qc: "Casablanca, Maroc — ouvert à une relocalisation au Canada"
+  note: >
+    Only `one_line` makes a factual claim. The module refuses to emit it unless
+    canada.toml sets authorized_to_work = true, because it is not a sentence
+    anyone but you can vouch for.
+
+# --------------------------------------------------------------------------
+sections:
+  # Two orders, because the sources differ. EN follows Canadian market practice
+  # (skills high for ATS keyword extraction); FR-QC follows OQLF's own suggested
+  # order, which puts formation before expériences.
+  order:
+    en:
+      [summary, skills, experience, projects, education, certifications,
+       languages, volunteer]
+    fr_qc:
+      [sommaire, competences, formation, experience, projets, certifications,
+       langues, benevolat]
+  headings:
+    en:
+      summary: PROFESSIONAL SUMMARY
+      skills: TECHNICAL SKILLS
+      experience: PROFESSIONAL EXPERIENCE
+      projects: PROJECTS
+      education: EDUCATION
+      certifications: CERTIFICATIONS
+      languages: LANGUAGES
+      volunteer: VOLUNTEER EXPERIENCE
+    fr_qc:
+      sommaire: SOMMAIRE PROFESSIONNEL
+      competences: COMPÉTENCES TECHNIQUES
+      formation: FORMATION
+      experience: EXPÉRIENCE PROFESSIONNELLE
+      projets: PROJETS
+      certifications: CERTIFICATIONS
+      langues: LANGUES
+      benevolat: BÉNÉVOLAT
+  optional: [volunteer, benevolat]
+  summary_lines: {min: 2, max: 3}
+  bullets_per_section:
+    max: 7                    # source: gov — Job Bank caps a section at 5-7
+    warn_above: 5
+
+# --------------------------------------------------------------------------
+language:
+  en_ca:
+    label: "English (Canada)"
+    # Canadian English is British on -our/-re/-ce and American on -ize/-yze.
+    # source: gov (Portail linguistique du Canada comparison table)
+    substitute:                      # applied automatically
+      color: colour
+      colors: colours
+      behavior: behaviour
+      behavioral: behavioural
+      favorite: favourite
+      labor: labour
+      honor: honour
+      neighbor: neighbour
+      center: centre
+      centers: centres
+      centered: centred
+      fiber: fibre
+      liter: litre
+      theater: theatre
+      defense: defence
+      offense: offence
+      modeling: modelling
+      modeled: modelled
+      labeling: labelling
+      labeled: labelled
+      traveling: travelling
+      traveled: travelled
+      canceled: cancelled
+      enrollment: enrolment
+      catalog: catalogue
+      gray: grey
+      acknowledgment: acknowledgement
+      likable: likeable
+      # and the British forms, if a source CV drifted that way
+      analyse: analyze
+      analysed: analyzed
+      analysing: analyzing
+      analysable: analyzable
+      organised: organized
+      organising: organizing
+      optimised: optimized
+      optimising: optimizing
+      prioritised: prioritized
+      standardised: standardized
+      recognise: recognize
+      recognised: recognized
+      utilise: utilize
+      utilised: utilized
+      summarise: summarize
+      minimise: minimize
+      maximise: maximize
+      customise: customize
+      specialise: specialize
+      specialised: specialized
+      realise: realize
+      emphasise: emphasize
+      normalise: normalize
+      visualise: visualize
+      containerise: containerize
+      modularise: modularize
+      categorise: categorize
+      parallelise: parallelize
+      organise: organize
+      optimise: optimize
+      prioritise: prioritize
+      standardise: standardize
+      programme: program
+      ageing: aging
+      judgement: judgment
+    keep:                            # already Canadian — never "correct" these
+      [analyze, organize, optimize, prioritize, standardize, containerize,
+       visualize, program, organization, judgment, aging]
+    review:                          # ambiguous, reported for a human decision
+      license: "licence as a noun, license as a verb"
+      practice: "practice as a noun, practise as a verb"
+      meter: "metre for the unit, meter for the device"
+      dialog: "dialogue in prose, dialog in 'dialog box'"
+      analog: "analogue in prose, analog in electronics"
+      check: "cheque only in the financial sense"
+
+  fr_qc:
+    label: "Français (Québec)"
+    document_name: "curriculum vitæ"       # source: gov (OQLF)
+    document_abbrev: "CV"
+    substitute:
+      email: courriel
+      e-mail: courriel
+      mail: courriel
+      "adresse e-mail": "adresse de courriel"
+      portable: cellulaire
+      "téléphone portable": "téléphone cellulaire"
+      mobile: cellulaire
+      job: emploi
+      opportunité: occasion
+    review:
+      cloud: >
+        OQLF prescribes « infonuagique ». Not substituted automatically: a
+        posting that says "cloud" is matched on "cloud", and the English term
+        reads fine to a Quebec tech recruiter. Opt in per application.
+      licence: "« Licence » is a France degree; Quebec says « baccalauréat »."
+    bullet_style: action_noun_or_infinitive
+    # source: gov (OQLF) — « des noms d'action ou des verbes à l'infinitif ».
+    # This is the biggest departure from my existing FR CVs, which open bullets
+    # with a past participle.
+    bullet_examples:
+      action_noun: "Conception d'un pipeline de détection d'anomalies…"
+      infinitive: "Concevoir un pipeline de détection d'anomalies…"
+      avoid: "Conçu un pipeline de détection d'anomalies…"
+
+# --------------------------------------------------------------------------
+dates:
+  format: "Mon YYYY"            # source: practice. No gov/career source
+  iso_allowed: false            # specifies one; ISO has zero support.
+  range_separator: " – "
+  months:
+    en: [Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec]
+    fr_qc: [janv., févr., mars, avr., mai, juin, juill., août, sept., oct.,
+            nov., déc.]
+  present:
+    en: Present
+    fr_qc: à ce jour
+
+# --------------------------------------------------------------------------
+education:
+  foreign_credential:
+    # none              say nothing
+    # equivalence_line  one plain-language line        — default
+    # eca_reference     name the assessing body and the reference number
+    mode: equivalence_line
+    templates:
+      equivalence_line:
+        en: "{degree}, {institution}, {city}, {country} ({equivalence})"
+        fr_qc: "{degree}, {institution}, {city}, {country} ({equivalence})"
+      eca_reference:
+        en: "Educational Credential Assessment: {body} ref. {reference}"
+        fr_qc: "Évaluation des diplômes d'études : {body}, réf. {reference}"
+    equivalence_text: ""        # left EMPTY on purpose: only an assessing body
+                                # can state the Canadian level, and the module
+                                # will not assert one. Fill it in canada.toml
+                                # once you have an assessment, or leave it off.
+    note: >
+      An ECA is an IRCC immigration instrument. Canada.ca states it does not
+      guarantee employment or licensing, and that in non-regulated occupations
+      (software, data, AI) employers assess credentials at their own discretion.
+      So `eca_reference` is available but is not the default.
+
+# --------------------------------------------------------------------------
+bullets:
+  person: third                 # source: gov — Job Bank: do not use I, my, me
+  banned_pronouns: [I, my, me, mine, myself]
+  banned_openers:
+    - "Responsible for"
+    - "Duties included"
+    - "Tasked with"
+    - "Helped with"
+    - "Worked on"
+    - "Responsable de"
+    - "Chargé de"
+  strong_openers:               # source: gov — Job Bank's own verb list
+    en: [Built, Designed, Developed, Led, Managed, Handled, Increased, Reduced,
+         Automated, Delivered, Implemented, Migrated, Optimized, Accomplished,
+         Leveraged, Diagnosed, Shipped, Analyzed, Consolidated]
+    fr_qc: [Conception, Développement, Direction, Gestion, Automatisation,
+            Livraison, Implémentation, Migration, Optimisation, Réduction,
+            Analyse, Consolidation]
+  metric:
+    require: warn               # a bullet with no number is a warning, not a
+    placeholder: "[METRIC?]"    # failure, and never an invented figure
+    report_placeholders: true
+
+# --------------------------------------------------------------------------
+# Hard rules the module enforces on itself, not on the resume.
+integrity:
+  never_invent: [experience, metrics, dates, skills, employers, titles]
+  rephrase_and_reorder_only: true
+  job_titles:                   # my existing convention, unchanged
+    ocp:
+      default: "AI Engineer"
+      on_role: {swe: "Software Engineer"}
+  source_of_truth: "the indexed CVs under cv_root; read only"
+
+# --------------------------------------------------------------------------
+# The lint registry. id -> severity, so a rule can be downgraded without
+# touching the checker.
+checks:
+  page_count: fail
+  paper_size: fail
+  column_count: fail
+  tables_present: fail
+  header_footer_present: fail
+  images_present: fail
+  text_not_selectable: fail
+  font_not_allowed: warn
+  font_size_out_of_range: warn
+  multiple_font_families: warn
+  margins_out_of_range: warn
+  forbidden_content: fail          # per-item severity above wins
+  missing_required_contact: fail
+  spelling_not_canadian: warn
+  date_format: warn
+  banned_opener: warn
+  pronoun_first_person: warn
+  bullets_over_max: warn
+  metric_placeholder_present: info
+  summary_length: info
+  section_order: info

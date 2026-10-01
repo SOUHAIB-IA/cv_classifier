@@ -1,0 +1,40 @@
+{
+ "name": "Souhaib GARAAOUCH",
+ "headline": "Data Engineer | ETL/ELT Pipelines, Data Modelling & Orchestration",
+ "contact": {
+  "email": "ada.lovelace@example.org",
+  "phone": "+1 514 555 0199",
+  "location": "Casablanca, Morocco - open to relocation to Canada",
+  "links": [{"label": "LinkedIn", "url": "https://www.linkedin.com/in/x"}]
+ },
+ "summary": "Data engineer who builds the pipelines models depend on: ingestion, transformation and enrichment from heterogeneous sources into a warehouse, batch and streaming, with the delivery chain around them.",
+ "sections": [
+  {"title": "PROFESSIONAL SUMMARY", "kind": "list",
+   "lines": ["Builds ingestion and transformation pipelines, batch and streaming."]},
+  {"title": "TECHNICAL SKILLS", "kind": "skills",
+   "groups": [{"label": "Pipelines", "items": ["Dataiku DSS, Apache Spark, Kafka, Python, Pandas"]},
+              {"label": "Modelling & storage", "items": ["SQL Server, PostgreSQL, data warehousing, star schema"]}]},
+  {"title": "PROFESSIONAL EXPERIENCE", "kind": "experience",
+   "items": [
+    {"heading": "AI Engineer", "org": "Veolia Software Solutions",
+     "dates": "Feb 2026 - Aug 2026", "location": "Rabat, QC",
+     "bullets": ["Designed and built the data pipeline behind water-consumption anomaly detection, which made detection above 80% with under 5% false positives possible.",
+                 "Implemented business-rule controls on the processed data, so a bad upstream record was caught in the pipeline instead of becoming a false alert."]},
+    {"heading": "Software Engineer", "org": "OCP Group",
+     "dates": "Jul 2025 - Sep 2025", "location": "El Jadida, ON",
+     "bullets": ["Rewrote and optimized the SQL extracting historical maintenance data, cutting response time from 40 seconds to about 5."]}]},
+  {"title": "PROJECTS", "kind": "projects",
+   "items": [{"heading": "Decision-support data warehouse", "org": "SQL Server, SSMS, ETL, Power BI",
+              "dates": "", "location": "",
+              "bullets": ["Modelled a star-schema warehouse and the ETL feeding it, turning raw engagement events into indicators a dashboard can answer questions from."]}]},
+  {"title": "EDUCATION", "kind": "education",
+   "items": [{"heading": "Engineering Degree, Data Science & Artificial Intelligence",
+              "org": "Ecole Nationale Superieure d'IA et des Sciences des Donnees",
+              "dates": "Sep 2023 - Jun 2026", "location": "Taroudant, Morocco",
+              "bullets": []}]},
+  {"title": "CERTIFICATIONS", "kind": "list",
+   "lines": ["Data Engineering Essentials, Coursera 2023"]},
+  {"title": "LANGUAGES", "kind": "list",
+   "lines": ["Arabic (native) | French (fluent) | English (fluent)"]}
+ ]
+}
