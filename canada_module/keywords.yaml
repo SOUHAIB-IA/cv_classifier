@@ -1,0 +1,89 @@
+# The technical vocabulary the match score is computed over.
+#
+# Separate from canada_rules.yaml on purpose: that file holds Canadian resume
+# rules with a source behind each one, and a glossary of tooling is not a
+# Canadian rule. Edit this freely — it is the one file in the module you will
+# want to grow as you read more postings.
+#
+# Why a vocabulary at all: scoring against every repeated word in an ad produced
+# a number built on "looking", "build and maintain" and "across warehouse". A
+# score that counts those is not a keyword score, it is a word-frequency score.
+
+# Never a keyword on its own, in either language. These are the verbs and nouns
+# every job ad and every resume contains.
+generic:
+  - ability, able, achieve, across, add, additional, advantage, analytics, apply
+  - approach, area, asset, assist, background, benefit, best, build, building
+  - business, candidate, career, challenge, chance, change, close, collaborate
+  - colleague, company, complex, contribute, create, critical, culture, customer
+  - day, deliver, delivery, demonstrate, design, detail, develop, development
+  - drive, ensure, environment, equivalent, excellent, experience, expert
+  - familiar, field, focus, follow, future, good, grow, growth, help, high
+  - impact, implement, improve, include, industry, join, key, knowledge, large
+  - lead, learn, level, like, looking, maintain, make, manage, member, mission
+  - need, new, offer, operate, opportunity, own, part, partner, people, plus
+  - position, practice, prefer, preferred, process, product, professional
+  - proficiency, project, provide, quality, question, real, record, related
+  - relevant, require, required, responsibility, role, scale, senior, service
+  - share, skill, solution, stakeholder, standard, start, strong, success
+  - support, system, take, task, team, technical, technology, time, tool, track
+  - understand, user, value, work, world, year
+  # the same, in French
+  - aptitude, atout, avantage, besoin, candidat, capacite, carriere, collegue
+  - competence, comprendre, concevoir, connaissance, contribuer, creer, defi
+  - developpement, domaine, donnee, entreprise, environnement, equipe, equivalent
+  - evoluer, experience, fonction, formation, gerer, haut, idealement, impact
+  - livrer, maitrise, metier, mission, niveau, nouveau, outil, participer
+  - partenaire, personne, poste, pratique, processus, produit, profil, projet
+  - qualite, realiser, requis, responsabilite, resultat, role, savoir, secteur
+  - service, solution, souhaite, soutien, systeme, technique, technologie
+  - travail, travailler, utilisateur, valeur
+
+# Terms that count, including ones this collection does not have — a gap is only
+# reportable if the vocabulary knows the word.
+technical:
+  languages: [python, java, scala, sql, javascript, typescript, bash, r, go, rust, c++, c#, php, ruby, kotlin, swift]
+  data: [etl, elt, pipeline, pipelines, data pipeline, data pipelines, warehouse,
+         data warehouse, data warehousing, data modeling, data modelling,
+         data model, data models, dimensional model, star schema, snowflake schema,
+         data quality, data governance, data lake, lakehouse, medallion,
+         ingestion, batch, streaming, cdc, orchestration, partitioning,
+         normalisation, denormalisation, olap, oltp, data mart]
+  tools: [airflow, dbt, dagster, prefect, luigi, talend, informatica, fivetran,
+          stitch, nifi, dataiku, databricks, snowflake, bigquery, redshift,
+          synapse, athena, glue, emr, hive, presto, trino, clickhouse, duckdb,
+          spark, apache spark, pyspark, kafka, apache kafka, flink, beam,
+          pandas, polars, numpy, dask, ray]
+  databases: [postgresql, postgres, mysql, mariadb, sql server, oracle, mongodb,
+              cassandra, dynamodb, redis, elasticsearch, neo4j, sqlite, pgvector]
+  ml: [machine learning, deep learning, scikit-learn, sklearn, tensorflow,
+       pytorch, keras, xgboost, lightgbm, catboost, mllib, transformers,
+       hugging face, cnn, cnns, rnn, lstm, arima, transfer learning,
+       feature engineering, hyperparameter, cross-validation, clustering,
+       k-means, isolation forest, autoencoder, anomaly detection, forecasting,
+       time series, classification, regression, nlp, computer vision, embeddings]
+  llm: [llm, llms, rag, langchain, langgraph, llamaindex, prompt engineering,
+        prompt, fine-tuning, vector database, vector store, faiss, pinecone,
+        chroma, weaviate, agent, agents, multi-agent, agentic, openai, anthropic,
+        claude, gpt, gemini, mistral, llama, langsmith, guardrails, pydantic]
+  mlops: [mlops, mlflow, evidently, weights biases, wandb, kubeflow, sagemaker,
+          vertex ai, azure ml, model registry, model serving, model monitoring,
+          drift, drift monitoring, data drift, model drift, retraining,
+          feature store, experiment tracking, a/b test, shadow deployment]
+  platform: [docker, kubernetes, k8s, helm, terraform, ansible, pulumi, jenkins,
+             github actions, gitlab ci, azure devops, circleci, argocd, ci/cd,
+             aws, azure, gcp, google cloud, cloud, serverless, lambda,
+             containerization, containerisation, iac, infrastructure as code,
+             linux, unix, nginx, git, observability, monitoring, prometheus,
+             grafana, datadog, logging, sre, devops]
+  backend: [api, apis, rest, rest api, restful, graphql, grpc, fastapi, flask,
+            django, spring, spring boot, express, node, nodejs, microservices,
+            microservice, soa, event-driven, message queue, rabbitmq, celery,
+            websocket, oauth, jwt, authentication, authorization]
+  frontend: [react, reactjs, next.js, nextjs, vue, angular, svelte, tailwind,
+             html, css, nextauth, ssr, api routes]
+  bi: [power bi, powerbi, tableau, looker, metabase, superset, dashboards,
+       dashboard, kpi, kpis, reporting, visualization, visualisation, ssms,
+       ssis, ssas, excel]
+  method: [agile, scrum, kanban, crisp-dm, tdd, code review, pair programming,
+           sprint, ci, cd, devsecops, documentation]

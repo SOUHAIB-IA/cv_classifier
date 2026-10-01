@@ -24,3 +24,7 @@ anthropic==1.6.0
 # imports it directly — the same omission that left httpx, openpyxl and
 # playwright undeclared until a clean venv caught it.
 PyYAML==6.0.3
+# canada_module emits a .docx beside every .pdf: U of T Mississauga's career
+# centre still tells applicants to avoid PDF for ATS, Greenhouse accepts it, and
+# the conflict is unresolved — so both ship. See canada_module/RESEARCH.md.
+python-docx==1.1.2

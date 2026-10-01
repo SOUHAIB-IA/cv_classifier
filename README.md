@@ -23,7 +23,7 @@ rewrites it for that ad, and hands you a finished application to send.
 An LLM reads the whole document — profile, skills, projects — so nothing turns
 on a filename or a stale job title at the top of the page.
 
-## Four pages
+## Five pages
 
 Everything is one local web app on <http://127.0.0.1:8770>. `Ctrl+K` searches
 every posting from any of them.
@@ -33,6 +33,7 @@ every posting from any of them.
 | **Analyser** | paste an ad, get the CV to send and what to change first |
 | **Pipeline** | the journey of a posting, what is waiting for you, and the graphs |
 | **Données** | every posting ever seen: search, filter, sort, export as CSV |
+| **Canada** | paste a Canadian ad, get a Canadian-format resume and what changed |
 | **Réglages** | every setting, with the sentence that explains it |
 
 ## Job application pipeline
@@ -297,6 +298,72 @@ Company first, because that is what you search for in a file picker, and the
 role second, because two roles at one company must never share a name. Older
 files move over with `python -m pipeline.tailor --rename`.
 
+## Canada Resume Studio
+
+A separate module for Canadian-format resumes, in `canada_module/`. It reads the
+CV index and the shared rendering helpers; it never writes to the index, never
+touches the pipeline database, and puts nothing where the watcher looks. The
+watcher observes `watch_dir` non-recursively, so output under
+`canada_module/output/` is out of its reach by construction, not by convention.
+
+```bash
+cp canada_module/canada.example.toml canada_module/canada.toml   # optional
+.venv/bin/python -m canada_module rules                          # what loaded
+.venv/bin/python -m canada_module check --role de --lang en      # lint a CV
+.venv/bin/python -m canada_module convert --role de --lang en    # make it Canadian
+.venv/bin/python -m canada_module tailor ad.txt --company Shopify --city "Toronto, ON"
+```
+
+Or open the **Canada** tab and paste an ad.
+
+### What it does
+
+**Checks.** Lints a PDF or a structured document against the rules and reports
+what it cannot verify instead of counting it as a pass: a PDF carries no table
+semantics and only an estimate of font size, so those are listed as unchecked.
+Run against this collection it finds A4 paper and an embedded photo on all
+twelve role CVs, plus `modeling` where Canadian English wants `modelling`.
+
+**Converts.** Re-spells, reformats dates to `Mon YYYY`, reorders sections,
+drops what Canadian rules exclude, and renders US Letter in one column, with a
+`.docx` beside the PDF. Every change is logged with the rule behind it.
+
+**Tailors.** Given an ad, picks the role and the language, scores the keyword
+overlap, and reorders — your skills groups, the items inside them, the bullets,
+the sentences of the summary — so what the ad asks about reads first.
+
+### What it will not do
+
+It only reorders and reformats. It never writes a sentence, and a term the ad
+asks for that your CV does not have is reported as a gap and never inserted.
+Where a claim has no figure behind it the result is a `[METRIC?]` placeholder
+listed in the report, never an invented number. A bullet opening with
+"Responsible for" is flagged rather than rewritten, because turning it into an
+achievement needs a fact the bullet does not carry. And a bullet that opens by
+referring back to the one above it is never promoted, since "Built the delivery
+chain around it" reads as nonsense in first position.
+
+`config.py` refuses to write "eligible to work in Canada" unless you set
+`authorized_to_work = true` yourself, and leaves the Canadian equivalence of a
+Moroccan engineering degree blank, because only an assessing body can state it.
+
+### The rules are a file, not code
+
+`canada_module/canada_rules.yaml` holds every rule with its source, and
+`RESEARCH.md` holds the quotation behind each one, ranked: government sources
+(Job Bank, Québec.ca, the OQLF, the Portail linguistique du Canada), university
+career centres (UBC, U of T Mississauga), ATS vendor documentation (Greenhouse,
+Workday), and nothing from a resume blog. Five widely repeated claims did not
+survive a primary source and are corrected there — among them that Canadian
+English is `-ize` and `-yze`, not `-ise`, so `analyze` and `optimize` were
+already right and `programme` would have been wrong.
+
+`canada_module/keywords.yaml` is the technical vocabulary the match score is
+computed over. Grow it as you read more postings.
+
+Loading refuses a `checks:` entry naming a check the linter does not implement,
+because a typo there would look like a rule that passes.
+
 ## Commands
 
 | Command | What it does |
@@ -320,6 +387,13 @@ files move over with `python -m pipeline.tailor --rename`.
 | `python -m pipeline.submit --next` | fill the best staged application's form |
 | `python -m pipeline.tracker weekly` | response rate per fit bucket |
 | `python -m pipeline.calibrate` | thresholds that reproduce your own labels |
+| `python -m canada_module rules` | the Canada rules and config in force |
+| `python -m canada_module check --role de` | lint a role CV against the Canada rules |
+| `python -m canada_module convert --role de` | build the Canadian version of it |
+| `python -m canada_module tailor ad.txt` | tailor it to one posting |
+| `python canada_module/tests/test_checker.py` | the Canada linter |
+| `python canada_module/tests/test_converter.py` | the Canada converter |
+| `python canada_module/tests/test_customize.py` | the customizer and its page |
 
 Start with `--dry-run`: it prints every decision and its reasoning without
 touching a file.

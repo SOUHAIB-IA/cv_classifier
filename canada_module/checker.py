@@ -111,6 +111,23 @@ class Report:
                 "counts": self.counts(), "not_checked": self.not_checked,
                 "findings": [vars(f) for f in self.findings]}
 
+    def merge(self, other: "Report") -> "Report":
+        """Combine a document report and a PDF report of the same resume.
+
+        Each one's `not_checked` is the other one's job, so anything both of them
+        could not reach is what survives here.
+        """
+        mine = {n for n in self.not_checked}
+        theirs = {n for n in other.not_checked}
+        out = Report(target=other.target or self.target, lang=self.lang)
+        out.findings = self.findings + other.findings
+        covered = ("paper size, page count, columns, fonts",
+                   "tables", "font size", "section order, summary length")
+        out.not_checked = sorted(
+            n for n in (mine | theirs)
+            if not any(n.startswith(c) for c in covered))
+        return out
+
     def text(self) -> str:
         c = self.counts()
         head = (f"{'PASS' if self.ok else 'FAIL'}  {self.target}  "

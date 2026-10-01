@@ -1,0 +1,98 @@
+{#- The Canadian page: US Letter, one column, real text, nothing an ATS parser
+    is documented to choke on.
+
+    A separate template rather than a flag on templates/cv.html, because that one
+    hardcodes `@page { size: A4 }` and belongs to the pipeline. Two differences
+    beyond the paper: no photo at all, and no right-aligned meta column — the
+    place and dates sit inline after the employer, so there is no vertical band
+    anywhere on the page that a column detector could read as a sidebar.      -#}
+<!doctype html>
+<html lang="{{ 'fr-CA' if lang == 'fr_qc' else 'en-CA' }}">
+<head>
+<meta charset="utf-8">
+<title>{{ doc.name }}</title>
+<style>
+  @page { size: letter; margin: {{ d.margin }}; }
+  * { box-sizing: border-box; }
+  {#- `| safe`: the stack contains double quotes, and autoescaping them to
+      &#34; produces invalid CSS, which Chrome answers by falling back to its
+      default serif. That is how this page first rendered in Tinos despite
+      asking for a sans-serif stack. -#}
+  body { font-family: {{ font | safe }}; font-size: {{ '%.2f' | format(d.fs) }}pt;
+         line-height: {{ d.lh }}; color: #111; margin: 0;
+         -webkit-font-smoothing: antialiased; }
+  h1 { font-size: {{ '%.1f' | format(d.h1) }}pt; margin: 0 0 1mm;
+       line-height: 1.05; font-weight: 700; letter-spacing: .005em; }
+  .headline { font-size: {{ '%.1f' | format(d.hl) }}pt; margin: 0 0 1.2mm;
+              font-weight: 600; color: #2b3240; }
+  .contact { font-size: {{ '%.2f' | format(d.fs * 0.95) }}pt; color: #333; }
+  .contact a { color: #1a3f73; text-decoration: none;
+               border-bottom: .3pt solid #9bb0cc; }
+  .sep { color: #9aa2ad; }
+  h2 { font-size: {{ '%.2f' | format(d.fs * 1.03) }}pt; font-weight: 700;
+       text-transform: uppercase; letter-spacing: .08em; color: #1f2a3a;
+       margin: {{ d.h2 }} 0 1.1mm; padding-bottom: .5mm;
+       border-bottom: .6pt solid #b9c2cf; }
+  .summary { margin: 0; }
+  .item { margin: 0 0 {{ d.item }}; }
+  /* Place and dates run on after the employer. No second column, by design. */
+  .line1 { font-weight: 600; }
+  .line1 .org { font-weight: 600; }
+  .line1 .meta { font-weight: 400; color: #3b434f; }
+  ul { margin: .5mm 0 0; padding-left: 4.6mm; }
+  li { margin: 0 0 {{ d.li }}; }
+  .skills { margin: 0; }
+  .skills p { margin: 0 0 .7mm; }
+  .skills .lab { font-weight: 700; }
+  .lines p { margin: 0 0 .6mm; }
+</style>
+</head>
+<body>
+  <h1>{{ doc.name }}</h1>
+  {% if doc.headline %}<div class="headline">{{ doc.headline }}</div>{% endif %}
+  <div class="contact">
+    {%- set sep = joiner('&nbsp;<span class="sep">|</span> ' | safe) -%}
+    {%- if doc.contact.email %}{{ sep() }}{{ doc.contact.email }}{% endif -%}
+    {%- if doc.contact.phone %}{{ sep() }}{{ doc.contact.phone }}{% endif -%}
+    {%- if doc.contact.location %}{{ sep() }}{{ doc.contact.location }}{% endif -%}
+    {%- for l in doc.contact.links or [] -%}
+      {%- if l.url %}{{ sep() }}<a href="{{ l.url }}">{{ l.label or l.url }}</a>
+      {%- elif l.label %}{{ sep() }}{{ l.label }}{% endif -%}
+    {%- endfor -%}
+    {%- if doc.contact.work_authorization %}{{ sep() }}{{ doc.contact.work_authorization }}{% endif -%}
+  </div>
+
+  {% if doc.summary %}
+  <h2>{{ labels.summary }}</h2>
+  <p class="summary">{{ doc.summary }}</p>
+  {% endif %}
+
+  {% for sec in doc.sections if not sec.hide %}
+  <h2>{{ sec.title }}</h2>
+  {% if sec.kind == "skills" %}
+    <div class="skills">
+    {% for g in sec.groups or [] if not g.hide %}
+      <p>{% if g.label %}<span class="lab">{{ g.label }}{{ "\u00a0:" if lang == "fr_qc" else ":" }}</span> {% endif %}{{ g["items"] | join(", ") }}</p>
+    {% endfor %}
+    </div>
+  {% elif sec.kind == "list" %}
+    {% set ls = sec.lines or [] %}
+    {% if ls and (ls | map("length") | max) <= 60 %}
+      <div class="lines"><p>{{ ls | join("  |  ") }}</p></div>
+    {% else %}
+      <div class="lines">{% for l in ls %}<p>{{ l }}</p>{% endfor %}</div>
+    {% endif %}
+  {% else %}
+    {% for it in sec["items"] or [] if not it.hide %}
+    <div class="item">
+      {#- role, employer, place, dates — the order an ATS expects to read -#}
+      {% set meta = [it.location, it.dates] | select | list %}
+      <div class="line1">{{ it.heading }}{% if it.org %}, <span class="org">{{ it.org }}</span>{% endif %}{% if meta %}<span class="meta"> &middot; {{ meta | join(" &middot; ") | safe }}</span>{% endif %}</div>
+      {% set bs = it.bullets | select | list %}
+      {% if bs %}<ul>{% for b in bs %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+  {% endfor %}
+</body>
+</html>

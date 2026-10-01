@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 import cvrouter as cr
 import matcher
 import webui
+from canada_module import web as canada_web
 
 HERE = Path(__file__).resolve().parent
 cfg = cr.load_config()
@@ -29,6 +30,9 @@ log = cr.setup_logging(cfg, "portal")
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 app = FastAPI(title="CV Router")
 app.include_router(webui.router)           # /pipeline dashboard and the CV editor
+# The Canada studio. Its own router, so webui.py is untouched and the pipeline
+# cannot reach into it: the dependency points one way only.
+app.include_router(canada_web.router)
 class _Revalidating(StaticFiles):
     """Serve the assets with "ask me every time".
 

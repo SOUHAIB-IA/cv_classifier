@@ -2,29 +2,66 @@
  "name": "Souhaib GARAAOUCH",
  "headline": "Data Engineer",
  "photo": "data/photo.png",
- "contact": {"location": "12 rue des Fleurs, Casablanca, H3Z 2Y7"},
+ "contact": {
+  "email": "ada.lovelace@example.org",
+  "phone": "+1 514 555 0199",
+  "location": "12 rue des Fleurs, Casablanca, H3Z 2Y7"
+ },
  "summary": "I am a data engineer. My focus is pipelines. I have worked on several systems over the years and I would like to bring my experience to your organization, where I believe my background in data modeling and my analysis skills will be a good fit for the team and the center of your roadmap.",
  "sections": [
-  {"title": "EDUCATION", "kind": "education",
-   "items": [{"heading": "Engineering Degree", "org": "ENSIASD",
-              "dates": "2023-09-01 - 2026-06-30", "location": "Taroudant",
-              "bullets": []}]},
-  {"title": "PROFESSIONAL EXPERIENCE", "kind": "experience",
-   "items": [{"heading": "AI Engineer", "org": "Veolia Software Solutions",
-              "dates": "02/2026 - 08/2026", "location": "Rabat",
-              "bullets": ["Responsible for the data pipeline and the modeling of the warehouse.",
-                          "Duties included writing SQL and analysing the results.",
-                          "Worked on the center of the platform.",
-                          "Helped with the labeling of the training data.",
-                          "Tasked with the licence renewal.",
-                          "Travelled to the plant to collect sensor data.",
-                          "Cancelled the legacy export after the migration.",
-                          "Delivered a report with [METRIC?] records processed."]}]},
-  {"title": "PERSONAL DETAILS", "kind": "list",
-   "lines": ["Date of birth: 12 March 1999", "Marital status: single",
-             "Nationality: Moroccan", "Social Insurance Number: 123 456 789",
-             "Gender: male", "Work permit: PGWP pending"]},
-  {"title": "REFERENCES", "kind": "list",
-   "lines": ["References available upon request"]}
+  {
+   "title": "EDUCATION",
+   "kind": "education",
+   "items": [
+    {
+     "heading": "Engineering Degree",
+     "org": "ENSIASD",
+     "dates": "2023-09-01 - 2026-06-30",
+     "location": "Taroudant",
+     "bullets": []
+    }
+   ]
+  },
+  {
+   "title": "PROFESSIONAL EXPERIENCE",
+   "kind": "experience",
+   "items": [
+    {
+     "heading": "AI Engineer",
+     "org": "Veolia Software Solutions",
+     "dates": "02/2026 - 08/2026",
+     "location": "Rabat",
+     "bullets": [
+      "Responsible for the data pipeline and the modeling of the warehouse.",
+      "Duties included writing SQL and analysing the results.",
+      "Worked on the center of the platform.",
+      "Helped with the labeling of the training data.",
+      "Tasked with the licence renewal.",
+      "Travelled to the plant to collect sensor data.",
+      "Cancelled the legacy export after the migration.",
+      "Delivered a report with [METRIC?] records processed."
+     ]
+    }
+   ]
+  },
+  {
+   "title": "PERSONAL DETAILS",
+   "kind": "list",
+   "lines": [
+    "Date of birth: 12 March 1999",
+    "Marital status: single",
+    "Nationality: Moroccan",
+    "Social Insurance Number: 123 456 789",
+    "Gender: male",
+    "Work permit: PGWP pending"
+   ]
+  },
+  {
+   "title": "REFERENCES",
+   "kind": "list",
+   "lines": [
+    "References available upon request"
+   ]
+  }
  ]
 }

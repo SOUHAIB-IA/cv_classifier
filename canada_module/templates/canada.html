@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canada · CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{% include "_nav.html" with context %}
+<main style="max-width:1200px">
+  <h1>Studio Canada</h1>
+  <div class="sub">Colle une offre canadienne : le module choisit le rôle et la
+    langue, convertit le CV au format canadien, le note sur les mots-clés, et
+    dit tout ce qu'il a changé. Il ne réécrit jamais une phrase et n'ajoute
+    jamais un terme que tu n'as pas.</div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="filters">
+      <div><label>Rôle</label><select id="c-role"></select></div>
+      <div><label>Langue</label><select id="c-lang">
+        <option value="">détectée depuis l'offre</option>
+        <option value="en">English (Canada)</option>
+        <option value="fr_qc">Français (Québec)</option>
+      </select></div>
+      <div><label>Entreprise</label><input id="c-company" placeholder="Shopify"></div>
+      <div><label>Ville cible</label><input id="c-city" placeholder="Toronto, ON"></div>
+      <div><label style="text-transform:none;letter-spacing:0">&nbsp;</label>
+        <label class="sw" style="height:33px">
+          <input type="checkbox" id="c-nobullets" style="width:auto">
+          <span class="track"><span class="knob"></span></span>
+          <span class="swtxt">Ne pas réordonner les puces</span></label></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <button class="primary" id="c-run">Adapter</button>
+        <button id="c-lint">Vérifier le CV source</button>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <label>Texte de l'offre</label>
+      <textarea id="c-jd" rows="9" placeholder="Colle ici l'annonce complète."
+        style="width:100%"></textarea>
+    </div>
+    <div class="sub" id="c-state" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card" style="margin-top:14px" id="c-out" hidden>
+    <h2 style="margin:0 0 8px" id="c-head">–</h2>
+    <div id="c-score"></div>
+    <div id="c-report" style="margin-top:12px"></div>
+    <div id="c-changes" style="margin-top:12px"></div>
+    <div id="c-files" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin:0 0 8px">Sorties</h2>
+    <div class="sub" id="c-dir"></div>
+    <div id="c-list" style="margin-top:8px"></div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script src="/static/canada.js"></script>
+</body>
+</html>
