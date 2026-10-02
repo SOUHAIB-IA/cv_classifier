@@ -4,7 +4,6 @@ Nothing here touches the filesystem outside cv_root / watch_dir / dupe_dir.
 """
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import logging
@@ -19,6 +18,8 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+
+import locking
 
 HERE = Path(__file__).resolve().parent
 
@@ -449,27 +450,13 @@ class Index:
 
     @contextmanager
     def _flock(self, timeout: float = 60.0):
-        self.cfg.index_file.parent.mkdir(parents=True, exist_ok=True)
-        fh = open(self._lockfile, "w")
-        deadline = time.monotonic() + timeout
         try:
-            while True:
-                try:
-                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    if time.monotonic() >= deadline:
-                        raise IndexLockTimeout(
-                            f"index locked by another process for >{timeout:g}s "
-                            f"({self._lockfile})"
-                        )
-                    time.sleep(0.05)
-            yield
-        finally:
-            try:
-                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-            finally:
-                fh.close()
+            with locking.exclusive(self._lockfile, timeout=timeout):
+                yield
+        except locking.LockBusy as e:
+            raise IndexLockTimeout(
+                f"index locked by another process for >{timeout:g}s "
+                f"({self._lockfile})") from e
 
     def _read_disk(self) -> dict[str, CVRecord]:
         if not self.cfg.index_file.is_file():

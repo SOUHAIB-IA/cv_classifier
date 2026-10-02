@@ -13,7 +13,6 @@ several processes, and they cannot be queried for the weekly rollup.
 """
 from __future__ import annotations
 
-import fcntl
 import json
 import re
 import sqlite3
@@ -21,6 +20,8 @@ import unicodedata
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
+
+import locking
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -285,15 +286,8 @@ class DB:
 def run_lock(path: Path):
     """One pipeline run at a time. A second scheduled run exits instead of
     racing the first over the same jobs."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(path, "w")
     try:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        fh.close()
-        raise RuntimeError("another pipeline run is in progress")
-    try:
-        yield
-    finally:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        fh.close()
+        with locking.exclusive(path, timeout=0.0):
+            yield
+    except locking.LockBusy as e:
+        raise RuntimeError("another pipeline run is in progress") from e

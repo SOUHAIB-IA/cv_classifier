@@ -28,3 +28,8 @@ PyYAML==6.0.3
 # centre still tells applicants to avoid PDF for ATS, Greenhouse accepts it, and
 # the conflict is unresolved — so both ship. See canada_module/RESEARCH.md.
 python-docx==1.1.2
+
+# One exclusive file lock on Linux, macOS and Windows. Replaces fcntl, which
+# does not exist on Windows and was imported at the top of two modules, so
+# nothing started there at all.
+portalocker==3.2.0

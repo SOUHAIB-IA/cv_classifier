@@ -364,6 +364,41 @@ computed over. Grow it as you read more postings.
 Loading refuses a `checks:` entry naming a check the linter does not implement,
 because a typo there would look like a rule that passes.
 
+## Start it
+
+```bash
+python start.py
+```
+
+One command, one window, on Linux, macOS or Windows. The watcher runs in a
+background thread and the web app in the main one, so there is no service to
+install. Prerequisites are checked first and a missing one is reported as the
+sentence you need — which package to install, which file to copy — rather than
+as a traceback three minutes later.
+
+| Flag | What it does |
+|---|---|
+| `--no-watcher` | the web app only, leave the download folder alone |
+| `--dry-run` | the watcher decides and logs, but moves nothing |
+| `--no-browser` | do not open a window |
+| `--port 8771` | somewhere other than the configured port |
+
+`install.sh` is still there for the systemd services on Linux, and is now
+optional: it buys you start-on-login, nothing else.
+
+### Running on Windows and macOS
+
+The locking goes through portalocker (`flock` on Unix, `LockFileEx` on Windows)
+and the folder watching through watchdog, which picks inotify, FSEvents or
+ReadDirectoryChangesW by itself. `test_portable.py` holds the line: it fails if
+any file imports a module the standard library ships only on Unix, which is the
+defect that made this Linux-only in the first place — `fcntl` at the top of two
+modules, so on Windows nothing ran at all.
+
+Three things are still Linux-only, and all three degrade rather than break: the
+desktop notification (`notify-send`), the "show me this file" button
+(`dbus-send` and `xdg-open`), and the button that restarts the watcher service.
+
 ## Commands
 
 | Command | What it does |
@@ -394,6 +429,7 @@ because a typo there would look like a rule that passes.
 | `python canada_module/tests/test_checker.py` | the Canada linter |
 | `python canada_module/tests/test_converter.py` | the Canada converter |
 | `python canada_module/tests/test_customize.py` | the customizer and its page |
+| `python test_portable.py` | the lock, the launcher, and no Unix-only imports |
 
 Start with `--dry-run`: it prints every decision and its reasoning without
 touching a file.
