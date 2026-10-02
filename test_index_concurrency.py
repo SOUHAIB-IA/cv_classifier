@@ -19,8 +19,11 @@ ok = True
 
 
 def check(label, cond, detail=""):
+    # flush: a traceback on stderr otherwise prints above the checks it follows,
+    # and a CI log then reads as though the failure came first.
     global ok
-    print(("  PASS  " if cond else "  FAIL  ") + label + (f"  {detail}" if detail else ""))
+    print(("  PASS  " if cond else "  FAIL  ") + label
+          + (f"  {detail}" if detail else ""), flush=True)
     ok = ok and cond
 
 
@@ -50,7 +53,7 @@ def run(worker, label, procs=4, per=25):
     final = cr.Index(cfg)
     got, want = len(final.records), procs * per
     print(f"\n{label}: {got}/{want} entrées conservées")
-    shutil.rmtree(tmp)
+    shutil.rmtree(tmp, ignore_errors=True)
     return got, want
 
 
@@ -109,7 +112,7 @@ def main():
     (cfg.cv_root / "neuf.pdf").unlink()
     a.commit(prune=True)
     check("entrée orpheline supprimée", "neuf.pdf" not in cr.Index(cfg).records)
-    shutil.rmtree(tmp)
+    shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n5. un verrou bloqué lève une erreur claire au lieu de figer")
     tmp = Path(tempfile.mkdtemp(prefix="cvidx-"))
@@ -121,7 +124,7 @@ def main():
             check("timeout levé", False, "aucune exception")
         except cr.IndexLockTimeout:
             check("timeout levé proprement", True)
-    shutil.rmtree(tmp)
+    shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
     return 0 if ok else 1
