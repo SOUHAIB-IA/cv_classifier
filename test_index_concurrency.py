@@ -40,23 +40,6 @@ def _writer(args):
     return who
 
 
-def _naive_writer(args):
-    """The OLD pattern, for contrast: load / mutate / write, no lock."""
-    cfg_root, who, n = args
-    cfg = cr.load_config()
-    cfg.cv_root = Path(cfg_root) / "CVs"
-    cfg.index_file = Path(cfg_root) / "index.json"
-    idx = cr.Index(cfg)
-    for i in range(n):
-        rel = f"{who}/cv-{i}.pdf"
-        (cfg.cv_root / who).mkdir(parents=True, exist_ok=True)
-        (cfg.cv_root / rel).write_bytes(b"%PDF-1.4 stub")
-        idx.load()                      # read whole file
-        idx.records[rel] = cr.CVRecord(path=rel, sig=f"{who}-{i}", summary="x")
-        idx._write_disk(idx.records)    # blind overwrite
-    return who
-
-
 def run(worker, label, procs=4, per=25):
     tmp = Path(tempfile.mkdtemp(prefix="cvidx-"))
     (tmp / "CVs").mkdir()
@@ -72,10 +55,33 @@ def run(worker, label, procs=4, per=25):
 
 
 def main():
+    # Ce test affirmait qu'une course SE PRODUIT, en lançant quatre processus
+    # et en espérant qu'ils se marchent dessus. Sur Windows, multiprocessing
+    # démarre par spawn : chaque worker coûte une seconde à naître, les écritures
+    # se chevauchent à peine, et rien ne se perd — l'assertion tombe alors que
+    # le code est correct. Rejoué ici sous spawn, une exécution est descendue à
+    # 4 entrées perdues sur 100 : à un cheveu du faux échec.
+    #
+    # La perte se démontre sans concurrence du tout. Deux Index qui ont lu le
+    # même état et qui réécrivent le fichier entier : le second efface le
+    # premier, toujours, sur toutes les plateformes.
     print("1. le motif NAÏF (load / mutate / write) perd des écritures")
-    got, want = run(_naive_writer, "   sans verrou")
-    check("des entrées sont bien perdues (c'était le bug)", got < want,
-          f"{want - got} perdues")
+    tmp = Path(tempfile.mkdtemp(prefix="cvidx-"))
+    (tmp / "CVs").mkdir()
+    cfg = cr.load_config()
+    cfg.cv_root, cfg.index_file = tmp / "CVs", tmp / "index.json"
+
+    a, b = cr.Index(cfg), cr.Index(cfg)        # même instantané : vide
+    a.records["un.pdf"] = cr.CVRecord(path="un.pdf", sig="1")
+    a._write_disk(a.records)                   # a écrit le fichier entier
+    b.records["deux.pdf"] = cr.CVRecord(path="deux.pdf", sig="2")
+    b._write_disk(b.records)                   # b ne sait rien de a
+
+    after = set(cr.Index(cfg).records)
+    print(f"\n   sans verrou: {len(after)}/2 entrées conservées")
+    check("l'écriture de a est perdue (c'était le bug)", "un.pdf" not in after,
+          sorted(after))
+    shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n2. commit() sous flock ne perd rien")
     got, want = run(_writer, "   avec commit()")
