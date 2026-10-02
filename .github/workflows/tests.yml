@@ -84,9 +84,10 @@ jobs:
                     .replace('"~/Documents/CVs"', f'"{posix(tmp / "CVs")}"')
                     .replace('"~/Downloads"', f'"{posix(tmp / "Downloads")}"'))
           pathlib.Path("config.toml").write_text(cfg, encoding="utf-8")
-          pathlib.Path("profile.toml").write_text(
-              pathlib.Path("profile.example.toml").read_text(encoding="utf-8"),
-              encoding="utf-8")
+          for name in ("profile", "pipeline"):
+              pathlib.Path(f"{name}.toml").write_text(
+                  pathlib.Path(f"{name}.example.toml").read_text(encoding="utf-8"),
+                  encoding="utf-8")
           print(cfg.splitlines()[1])
 
       # If a prerequisite is missing, say so here rather than inside a suite
@@ -149,7 +150,8 @@ jobs:
                     .replace('"~/Documents/CVs"', f'"{tmp / "CVs"}"')
                     .replace('"~/Downloads"', f'"{tmp / "Downloads"}"'))
           pathlib.Path("config.toml").write_text(cfg, encoding="utf-8")
-          pathlib.Path("profile.toml").write_text(
-              pathlib.Path("profile.example.toml").read_text(encoding="utf-8"),
-              encoding="utf-8")
+          for name in ("profile", "pipeline"):
+              pathlib.Path(f"{name}.toml").write_text(
+                  pathlib.Path(f"{name}.example.toml").read_text(encoding="utf-8"),
+                  encoding="utf-8")
       - run: python test_pipeline.py

@@ -45,7 +45,7 @@ OURS = ["cvrouter.py", "indexer.py", "matcher.py", "match.py", "portal.py",
 def check(label, cond, detail=""):
     global ok
     print(("  PASS  " if cond else "  FAIL  ") + label
-          + (f"   ({detail})" if detail and not cond else ""))
+          + (f"   ({detail})" if detail and not cond else ""), flush=True)
     ok = ok and bool(cond)
 
 
@@ -152,11 +152,21 @@ def main() -> int:
     check("there are Windows locations off PATH", browsers.WINDOWS_RELATIVE)
     check("and macOS bundle paths", browsers.MACOS_PATHS)
     # One list, three callers: a browser one of them can find, all of them can.
-    check("the launcher and the renderers agree",
-          S.find_chrome() == CR.find_chrome()
-          == PT.find_chrome(__import__("pipeline.config",
-                                       fromlist=["load"]).load()),
+    check("the launcher and the Canada renderer agree",
+          S.find_chrome() == CR.find_chrome(),
           (S.find_chrome(), CR.find_chrome()))
+    # The pipeline's renderer takes a PipelineConfig, and pipeline.toml is not
+    # in a fresh checkout. Asking for it crashed this file on the first CI run:
+    # a test about finding a browser must not need a config about something
+    # else. It is checked when the file is there and skipped, out loud, when it
+    # is not.
+    if (HERE / "pipeline.toml").is_file():
+        from pipeline import config as pc
+        check("...and so does the pipeline renderer",
+              PT.find_chrome(pc.load()) == S.find_chrome())
+    else:
+        print("  skip  the pipeline renderer (no pipeline.toml in this "
+              "checkout)", flush=True)
 
     print("\n4b. the launcher's preflight")
     check("every platform has an install hint",
