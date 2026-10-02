@@ -32,6 +32,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+import browsers
 import cvrouter as cr
 
 from . import config as pc
@@ -563,12 +564,10 @@ def render_fitted(doc: dict, lang: str, out: Path, chrome: str,
 
 
 def find_chrome(pcfg: pc.PipelineConfig) -> str:
-    for c in ([pcfg.chrome_bin] if pcfg.chrome_bin else []) + [
-            "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
-        p = shutil.which(c) if c and not Path(c).is_file() else c
-        if p:
-            return p
-    raise TailorError("no Chrome/Chromium found to render the PDF")
+    p = browsers.find_chrome(pcfg.chrome_bin)
+    if not p:
+        raise TailorError("no Chrome/Chromium found to render the PDF")
+    return p
 
 
 def html_to_pdf(html: str, out: Path, chrome: str) -> None:

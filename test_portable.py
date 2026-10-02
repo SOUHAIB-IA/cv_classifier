@@ -139,9 +139,26 @@ def main() -> int:
                 check("a second pipeline run is refused",
                       "another pipeline run" in str(e), str(e))
 
-    print("\n4. the launcher")
+    print("\n4. finding Chrome")
+    import browsers
+    from canada_module import render as CR
+    from pipeline import tailor as PT
     check("Chrome is found on this machine", bool(S.find_chrome()),
           "none of " + ", ".join(S.CHROMES))
+    # There were three copies of this list and none knew the name `chrome`,
+    # which is what Windows calls the binary and what a CI runner puts on PATH.
+    check("the bare name `chrome` is searched for", "chrome" in browsers.NAMES)
+    check("so is chrome.exe", "chrome.exe" in browsers.NAMES)
+    check("there are Windows locations off PATH", browsers.WINDOWS_RELATIVE)
+    check("and macOS bundle paths", browsers.MACOS_PATHS)
+    # One list, three callers: a browser one of them can find, all of them can.
+    check("the launcher and the renderers agree",
+          S.find_chrome() == CR.find_chrome()
+          == PT.find_chrome(__import__("pipeline.config",
+                                       fromlist=["load"]).load()),
+          (S.find_chrome(), CR.find_chrome()))
+
+    print("\n4b. the launcher's preflight")
     check("every platform has an install hint",
           set(S.INSTALL_HINT) >= {"Linux", "Darwin", "Windows"})
     for sysname in ("Linux", "Darwin", "Windows"):

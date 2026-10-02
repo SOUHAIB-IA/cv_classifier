@@ -399,6 +399,11 @@ Three things are still Linux-only, and all three degrade rather than break: the
 desktop notification (`notify-send`), the "show me this file" button
 (`dbus-send` and `xdg-open`), and the button that restarts the watcher service.
 
+Every push runs the suites on **ubuntu-latest, windows-latest and
+macos-latest** (`.github/workflows/tests.yml`). That is the point of the
+workflow: the defect that made this Linux-only is invisible on the machine you
+develop on, so it needs a runner that is not yours.
+
 ## Commands
 
 | Command | What it does |
@@ -429,7 +434,7 @@ desktop notification (`notify-send`), the "show me this file" button
 | `python canada_module/tests/test_checker.py` | the Canada linter |
 | `python canada_module/tests/test_converter.py` | the Canada converter |
 | `python canada_module/tests/test_customize.py` | the customizer and its page |
-| `python test_portable.py` | the lock, the launcher, and no Unix-only imports |
+| `python test_portable.py` | the lock, the launcher, finding Chrome, no Unix-only imports |
 
 Start with `--dry-run`: it prints every decision and its reasoning without
 touching a file.

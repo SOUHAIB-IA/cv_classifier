@@ -1,0 +1,155 @@
+# Does this actually run anywhere but the machine it was written on?
+#
+# The project was Linux-only for one reason: `fcntl` imported at the top of two
+# modules, so on Windows nothing started at all. That is invisible on the
+# machine you develop on, which is exactly why it needs a runner that is not
+# yours. Windows is the point of this file; Linux and macOS come along because
+# they cost nothing extra and the claim is that all three work.
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:        # so you can run it by hand from the Actions tab
+
+jobs:
+  portable:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false      # a Windows failure must not hide a macOS one
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # poppler reads every PDF: text for matching, page count and fonts for
+      # the Canada checks. It is the one dependency that is not a Python
+      # package, and it installs differently on each platform.
+      - name: poppler (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: poppler (macOS)
+        if: runner.os == 'macOS'
+        run: brew install poppler
+
+      - name: poppler (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = "24.08.0-0"
+          $url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v$ver/Release-$ver.zip"
+          Invoke-WebRequest -Uri $url -OutFile poppler.zip
+          Expand-Archive poppler.zip -DestinationPath "$env:RUNNER_TEMP\poppler"
+          $bin = (Get-ChildItem -Path "$env:RUNNER_TEMP\poppler" -Recurse -Filter pdftotext.exe | Select-Object -First 1).DirectoryName
+          if (-not $bin) { throw "pdftotext.exe not found in the poppler archive" }
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+
+      # Chrome renders the CVs. Installed explicitly rather than trusting what
+      # happens to be on the image, so a runner image change cannot silently
+      # turn this green or red.
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+
+      - name: dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # The tests read config.toml, and it is gitignored because it holds your
+      # own paths. Written here in Python so the same step works on all three.
+      - name: a config pointing at throwaway folders
+        shell: python
+        run: |
+          import pathlib, tempfile
+          tmp = pathlib.Path(tempfile.mkdtemp(prefix="cv-router-ci-"))
+          for sub in ("CVs", "Downloads", "dupes"):
+              (tmp / sub).mkdir(parents=True, exist_ok=True)
+          def posix(p):            # TOML, so backslashes must not be escapes
+              return str(p).replace("\\", "/")
+          cfg = pathlib.Path("config.example.toml").read_text(encoding="utf-8")
+          cfg = (cfg.replace('"~/Documents/CVs/_Duplicates-auto"', f'"{posix(tmp / "dupes")}"')
+                    .replace('"~/Documents/CVs"', f'"{posix(tmp / "CVs")}"')
+                    .replace('"~/Downloads"', f'"{posix(tmp / "Downloads")}"'))
+          pathlib.Path("config.toml").write_text(cfg, encoding="utf-8")
+          pathlib.Path("profile.toml").write_text(
+              pathlib.Path("profile.example.toml").read_text(encoding="utf-8"),
+              encoding="utf-8")
+          print(cfg.splitlines()[1])
+
+      # If a prerequisite is missing, say so here rather than inside a suite
+      # where it looks like a logic failure.
+      - name: what this runner found
+        run: |
+          python -c "import platform,shutil,sys; print(platform.platform()); print('python', sys.version)"
+          python -c "import start; print('chrome:', start.find_chrome())"
+          python -c "import shutil; print('pdftotext:', shutil.which('pdftotext')); print('pdfinfo:', shutil.which('pdfinfo'))"
+          python -c "import start; f,w = start.preflight(None); print('fatal:', f); print('warn:', w); raise SystemExit(1 if f else 0)"
+
+      # The portability suite first: it is the one that answers the question
+      # this workflow exists to ask.
+      - name: test_portable.py
+        run: python test_portable.py
+
+      - name: test_index_concurrency.py
+        run: python test_index_concurrency.py
+
+      - name: test_routing.py
+        run: python test_routing.py
+
+      - name: canada_module checker
+        run: python canada_module/tests/test_checker.py
+
+      - name: canada_module converter
+        run: python canada_module/tests/test_converter.py
+
+      - name: canada_module customizer
+        run: python canada_module/tests/test_customize.py
+
+  # The job pipeline is platform-independent logic and the slowest suite, so it
+  # runs once rather than three times.
+  pipeline:
+    name: job pipeline (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: a config pointing at throwaway folders
+        shell: python
+        run: |
+          import pathlib, tempfile
+          tmp = pathlib.Path(tempfile.mkdtemp(prefix="cv-router-ci-"))
+          for sub in ("CVs", "Downloads", "dupes"):
+              (tmp / sub).mkdir(parents=True, exist_ok=True)
+          cfg = pathlib.Path("config.example.toml").read_text(encoding="utf-8")
+          cfg = (cfg.replace('"~/Documents/CVs/_Duplicates-auto"', f'"{tmp / "dupes"}"')
+                    .replace('"~/Documents/CVs"', f'"{tmp / "CVs"}"')
+                    .replace('"~/Downloads"', f'"{tmp / "Downloads"}"'))
+          pathlib.Path("config.toml").write_text(cfg, encoding="utf-8")
+          pathlib.Path("profile.toml").write_text(
+              pathlib.Path("profile.example.toml").read_text(encoding="utf-8"),
+              encoding="utf-8")
+      - run: python test_pipeline.py

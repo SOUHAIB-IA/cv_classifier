@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from . import config as ccfg
 from . import render as R
 from .checker import check_doc, check_pdf
-from .cli import ROLE_FILES, _library_doc, _slug
+from .cli import ROLE_FILES, LibraryMissing, _library_doc, _slug
 from .convert import convert
 from .customize import emphasise, match, pick_lang, pick_role
 from .rules import load_rules
@@ -67,7 +67,10 @@ def api_check(payload: dict, x_cv_router: str | None = Header(default=None)):
     rules = load_rules()
     lang = payload.get("lang") or "en"
     if payload.get("role"):
-        doc, pdf = _library_doc(payload["role"], lang)
+        try:
+            doc, pdf = _library_doc(payload["role"], lang)
+        except LibraryMissing as e:
+            raise HTTPException(404, str(e)) from e
         rep = check_doc(doc, rules, lang).merge(check_pdf(pdf, rules, lang))
     elif payload.get("doc"):
         rep = check_doc(payload["doc"], rules, lang)
@@ -90,7 +93,10 @@ def api_tailor(payload: dict, x_cv_router: str | None = Header(default=None)):
     role, why_role = ((payload["role"], "you chose it") if payload.get("role")
                       else pick_role(jd))
 
-    doc, src = _library_doc(role, lang)
+    try:
+        doc, src = _library_doc(role, lang)
+    except LibraryMissing as e:
+        raise HTTPException(404, str(e)) from e
     canadian, log = convert(doc, rules, cfg, lang)
     m = match(canadian, jd, rules, lang)
     tailored = emphasise(canadian, m, log,

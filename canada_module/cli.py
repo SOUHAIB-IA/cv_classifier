@@ -35,6 +35,15 @@ ROLE_FILES = {"ai": "AI_Engineer", "mlops": "MLOps", "devops": "DevOps",
               "swe": "Software_Engineer"}
 
 
+class LibraryMissing(RuntimeError):
+    """A role CV, or its structured source, is not in the collection.
+
+    An ordinary exception rather than SystemExit: these helpers are called from
+    the CLI, where exiting is right, and from a web handler, where exiting is a
+    server that stops answering. Each caller decides what it means.
+    """
+
+
 def _library_pdf(role: str, lang: str) -> Path:
     """Find a role CV in the indexed library, read-only.
 
@@ -48,7 +57,7 @@ def _library_pdf(role: str, lang: str) -> Path:
     stem = f"Souhaib_Garaaouch_{ROLE_FILES[role]}_{'EN' if lang == 'en' else 'FR'}"
     hits = sorted(cfg.cv_root.rglob(f"{stem}.pdf"))
     if not hits:
-        raise SystemExit(f"no {stem}.pdf under {cfg.cv_root}")
+        raise LibraryMissing(f"no {stem}.pdf under {cfg.cv_root}")
     return hits[0]
 
 
@@ -89,7 +98,7 @@ def _library_doc(role: str, lang: str) -> tuple[dict, Path]:
     if not side.is_file():
         side = pdf.parent / (pdf.stem + ".cv.json")
     if not side.is_file():
-        raise SystemExit(
+        raise LibraryMissing(
             f"no structured source beside {pdf.name}. The converter works from "
             f"a .cv.json; build one with the pipeline, or pass a .cv.json "
             f"directly.")
@@ -315,6 +324,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except ccfg.ConfigError as e:
         print(f"config error: {e}", file=sys.stderr)
+        return 2
+    except LibraryMissing as e:
+        print(f"{e}", file=sys.stderr)
         return 2
 
 

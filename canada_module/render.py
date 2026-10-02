@@ -14,6 +14,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+import browsers
+
 HERE = Path(__file__).resolve().parent
 TEMPLATES = HERE / "templates"
 
@@ -58,13 +60,10 @@ def render_html(doc: dict, lang: str, density: dict | None = None,
 
 
 def find_chrome(chrome_bin: str = "") -> str:
-    for c in ([chrome_bin] if chrome_bin else []) + [
-            "google-chrome", "google-chrome-stable", "chromium",
-            "chromium-browser"]:
-        p = shutil.which(c) if c and not Path(c).is_file() else c
-        if p:
-            return str(p)
-    raise RuntimeError("no Chrome/Chromium found to render the PDF")
+    p = browsers.find_chrome(chrome_bin)
+    if not p:
+        raise RuntimeError("no Chrome/Chromium found to render the PDF")
+    return p
 
 
 def html_to_pdf(html: str, out: Path, chrome: str) -> None:

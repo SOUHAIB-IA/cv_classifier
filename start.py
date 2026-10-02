@@ -29,6 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+import browsers  # noqa: E402  (after sys.path, on purpose)
+
 
 def say(*a) -> None:
     """Print and flush.
@@ -43,8 +45,7 @@ def say(*a) -> None:
 # poppler reads the PDFs: text for matching, page count and fonts for the
 # checks. Chrome renders them. Neither ships with Python.
 POPPLER = ("pdftotext", "pdfinfo")
-CHROMES = ("google-chrome", "google-chrome-stable", "chromium",
-           "chromium-browser", "chrome", "msedge")
+CHROMES = browsers.NAMES
 
 INSTALL_HINT = {
     "Linux": {"poppler": "sudo apt install poppler-utils   (or: dnf install poppler-utils)",
@@ -59,27 +60,7 @@ INSTALL_HINT = {
 
 def find_chrome() -> str | None:
     """Chrome, wherever this platform keeps it."""
-    for name in CHROMES:
-        p = shutil.which(name)
-        if p:
-            return p
-    # Windows installs it outside PATH more often than not.
-    for base in (os.environ.get("PROGRAMFILES", r"C:\Program Files"),
-                 os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
-                 os.environ.get("LOCALAPPDATA", "")):
-        if not base:
-            continue
-        for rel in (r"Google\Chrome\Application\chrome.exe",
-                    r"Microsoft\Edge\Application\msedge.exe"):
-            p = Path(base) / rel
-            if p.is_file():
-                return str(p)
-    # macOS keeps it in a bundle, which is not on PATH either.
-    for p in ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-              "/Applications/Chromium.app/Contents/MacOS/Chromium"):
-        if Path(p).is_file():
-            return p
-    return None
+    return browsers.find_chrome()
 
 
 def preflight(cfg_path: Path | None) -> tuple[list[str], list[str]]:
