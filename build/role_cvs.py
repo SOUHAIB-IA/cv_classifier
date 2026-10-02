@@ -19,18 +19,31 @@ contradictions left for the owner to settle.
 """
 from __future__ import annotations
 
-ME = {
-    "name": "Souhaib GARAAOUCH",
-    "contact": {
-        "email": "ada.lovelace@example.org",
-        "phone": "+1 514 555 0199",
-        "links": [
-            {"label": "LinkedIn", "url": "https://www.linkedin.com/in/ada-lovelace"},
-            {"label": "GitHub", "url": "https://github.com/SOUHAIB-IA"},
-            {"label": "Portfolio", "url": "https://souhaib-garaaouch.vercel.app"},
-        ],
-    },
-}
+def me() -> dict:
+    """Name and contact details, read from profile.toml.
+
+    Not hardcoded here: profile.toml is gitignored and this file is not, and a
+    phone number on a public repository is read by address harvesters rather
+    than by the employer it was written for. profile.toml is already the one
+    place these live, and already what fills an employer's form.
+    """
+    from pipeline import config as pc
+
+    ident = pc.load_profile().get("base") or {}
+    name = " ".join(x for x in (ident.get("first_name"),
+                                ident.get("last_name")) if x)
+    links = [{"label": label, "url": ident[key]}
+             for key, label in (("linkedin", "LinkedIn"), ("github", "GitHub"),
+                                ("portfolio", "Portfolio"))
+             if ident.get(key)]
+    if not name or not ident.get("email"):
+        raise SystemExit(
+            "build/role_cvs.py reads your name and contact details from "
+            "profile.toml, and found none. Copy profile.example.toml to "
+            "profile.toml and fill in [identity].")
+    return {"name": name,
+            "contact": {"email": ident.get("email", ""),
+                        "phone": ident.get("phone", ""), "links": links}}
 
 EDU = {
     "en": [
@@ -469,7 +482,7 @@ FILE_ROLE = {"ai": "AI_Engineer", "mlops": "MLOps", "devops": "DevOps",
 
 
 def document(role: str, lang: str) -> dict:
-    r, h = ROLES[role], HEADINGS[lang]
+    r, h, ME = ROLES[role], HEADINGS[lang], me()
     titles = JOB_TITLES.get(role, JOB_TITLES["*"])
     exp = []
     for key in ("veolia", "ocp", "ava", "corp"):

@@ -1,11 +1,11 @@
 {
- "name": "Souhaib GARAAOUCH",
+ "name": "Ada LOVELACE",
  "headline": "Data Engineer | ETL/ELT Pipelines, Data Modelling & Orchestration",
  "contact": {
   "email": "ada.lovelace@example.org",
   "phone": "+1 514 555 0199",
   "location": "Casablanca, Morocco - open to relocation to Canada",
-  "links": [{"label": "LinkedIn", "url": "https://www.linkedin.com/in/x"}]
+  "links": [{"label": "LinkedIn", "url": "https://www.linkedin.com/in/ada-lovelace"}]
  },
  "summary": "Data engineer who builds the pipelines models depend on: ingestion, transformation and enrichment from heterogeneous sources into a warehouse, batch and streaming, with the delivery chain around them.",
  "sections": [
