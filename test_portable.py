@@ -185,11 +185,27 @@ def main() -> int:
             fatal, _warn = S.preflight(None)
             joined = " ".join(fatal)
             check("a missing poppler is reported, with how to install it",
-                  "pdftotext" in joined and "poppler" in joined.lower(), joined[:120])
-            check("a missing Chrome is reported",
-                  any("chrom" in f.lower() for f in fatal), joined[:120])
+                  "pdftotext" in joined and "poppler" in joined.lower(),
+                  joined[:120])
         finally:
             os.environ["PATH"] = env_path
+
+        # Chrome is NOT hidden by an empty PATH on Windows or macOS, because
+        # browsers.py deliberately looks in Program Files and /Applications.
+        # Emptying PATH and expecting a complaint is a Linux assumption, and it
+        # failed on both other platforms in CI. Take the browser away instead.
+        import browsers
+        real = browsers.find_chrome
+        try:
+            browsers.find_chrome = lambda preferred="": None
+            fatal, _warn = S.preflight(None)
+            check("a missing Chrome is reported, on any platform",
+                  any("chrom" in f.lower() for f in fatal), fatal)
+            check("...and says where to get it",
+                  any("google.com/chrome" in f or "package manager" in f
+                      for f in fatal), fatal)
+        finally:
+            browsers.find_chrome = real
 
     # And a missing config says which file to copy.
     with tempfile.TemporaryDirectory() as td:

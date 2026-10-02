@@ -35,9 +35,12 @@ jobs:
       # poppler reads every PDF: text for matching, page count and fonts for
       # the Canada checks. It is the one dependency that is not a Python
       # package, and it installs differently on each platform.
-      - name: poppler (Linux)
+      - name: poppler and the metric-clone fonts (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils \
+            fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation
 
       - name: poppler (macOS)
         if: runner.os == 'macOS'
@@ -97,6 +100,16 @@ jobs:
           python -c "import platform,shutil,sys; print(platform.platform()); print('python', sys.version)"
           python -c "import start; print('chrome:', start.find_chrome())"
           python -c "import shutil; print('pdftotext:', shutil.which('pdftotext')); print('pdfinfo:', shutil.which('pdfinfo'))"
+          python -c "
+          import yaml, subprocess, shutil
+          allowed = yaml.safe_load(open('canada_module/canada_rules.yaml'))['document']['font']['allowed']
+          if shutil.which('fc-list'):
+              out = subprocess.run(['fc-list'], capture_output=True, text=True).stdout.lower()
+              print('allowed font families present:',
+                    [a for a in allowed if a.lower() in out])
+          else:
+              print('no fc-list on this platform; font inventory not read')
+          "
           python -c "import start; f,w = start.preflight(None); print('fatal:', f); print('warn:', w); raise SystemExit(1 if f else 0)"
 
       # The portability suite first: it is the one that answers the question

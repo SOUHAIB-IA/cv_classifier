@@ -48,6 +48,13 @@ def doc_words(doc: dict) -> set[str]:
     return words(_doc_text(doc))
 
 
+def R_probe(pdf) -> set[str]:
+    """The font families the rendered PDF actually embedded."""
+    from canada_module.checker import probe_pdf
+    import re as _re
+    return {_re.split(r"[-,]", f)[0] for f in probe_pdf(pdf).fonts if f}
+
+
 def find_chrome():
     for c in ("google-chrome", "google-chrome-stable", "chromium",
               "chromium-browser"):
@@ -273,9 +280,28 @@ def main() -> int:
                   [f.message for f in rep.findings])
             # The font stack carries double quotes; autoescaping them yields
             # invalid CSS and Chrome silently falls back to a serif. It did.
-            check("the font stack survived autoescaping",
-                  "font_not_allowed" not in {f.check for f in rep.findings},
-                  [f.message for f in rep.findings if f.check == "font_not_allowed"])
+            #
+            # Checked on the HTML, not on the rendered PDF. The PDF only shows
+            # which font Chrome COULD find, so on a machine with none of the
+            # allowed families installed this said "the stack was escaped" when
+            # the stack was fine and the fonts were simply absent — which is
+            # what it said on the Linux CI runner. The escape is the defect; the
+            # font inventory is the machine's business.
+            html = R.render_html(out, "en")
+            css = next(l for l in html.splitlines() if "font-family" in l)
+            check("the font stack reaches Chrome unescaped",
+                  "&#34;" not in css and '"Carlito"' in css, css[:90])
+            # And when a listed family IS installed, the PDF must use it.
+            allowed = {f.lower() for f in rules.d["document"]["font"]["allowed"]}
+            used = {f.lower() for f in R_probe(pdf)}
+            if used & {a for a in allowed}:
+                check("the rendered PDF uses an allowed family",
+                      "font_not_allowed" not in {f.check for f in rep.findings},
+                      [f.message for f in rep.findings
+                       if f.check == "font_not_allowed"])
+            else:
+                print(f"  skip  no allowed font family installed here "
+                      f"({', '.join(sorted(used)) or 'none read'})")
             docx = td / "x.docx"
             R.render_docx(out, "en", docx)
             from docx import Document
