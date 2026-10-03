@@ -93,7 +93,7 @@ jobs:
           cfg = pathlib.Path("config.example.toml").read_text(encoding="utf-8")
           cfg = (cfg.replace('"~/Documents/CVs/_Duplicates-auto"', f'"{posix(tmp / "dupes")}"')
                     .replace('"~/Documents/CVs"', f'"{posix(tmp / "CVs")}"')
-                    .replace('"~/Downloads"', f'"{posix(tmp / "Downloads")}"'))
+                    .replace('"~/Documents/cv-router-inbox"', f'"{posix(tmp / "Downloads")}"'))
           pathlib.Path("config.toml").write_text(cfg, encoding="utf-8")
           for name in ("profile", "pipeline"):
               pathlib.Path(f"{name}.toml").write_text(
@@ -169,7 +169,7 @@ jobs:
           cfg = pathlib.Path("config.example.toml").read_text(encoding="utf-8")
           cfg = (cfg.replace('"~/Documents/CVs/_Duplicates-auto"', f'"{tmp / "dupes"}"')
                     .replace('"~/Documents/CVs"', f'"{tmp / "CVs"}"')
-                    .replace('"~/Downloads"', f'"{tmp / "Downloads"}"'))
+                    .replace('"~/Documents/cv-router-inbox"', f'"{tmp / "Downloads"}"'))
           pathlib.Path("config.toml").write_text(cfg, encoding="utf-8")
           for name in ("profile", "pipeline"):
               pathlib.Path(f"{name}.toml").write_text(

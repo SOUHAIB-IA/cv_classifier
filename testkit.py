@@ -5,10 +5,31 @@ own PDF. It has to be a genuine PDF because pdftotext runs on it for real.
 """
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 
 import cvrouter as cr
+
+
+def release_logs() -> None:
+    """Close every log file this process has open, and forget the handlers.
+
+    Windows refuses to delete a file that something still holds open, so a
+    throwaway directory containing the watcher's log cannot be removed while
+    its FileHandler lives. Linux deletes it regardless, which is why every test
+    passed here and the cleanup, not the test, failed in CI.
+
+    The handlers are removed as well as closed: cr.setup_logging returns early
+    when a logger already has handlers, so leaving a closed one attached would
+    hand the next test a logger that cannot write.
+    """
+    for name in list(logging.root.manager.loggerDict):
+        log = logging.getLogger(name)
+        for h in list(log.handlers):
+            if isinstance(h, logging.FileHandler):
+                log.removeHandler(h)
+                h.close()
 
 SAMPLE_TEXT = [
     "Ada LOVELACE",

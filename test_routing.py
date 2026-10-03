@@ -205,6 +205,7 @@ def main():
     check("a cache entry was written", len(entries) >= 1)
     check("cached text matches", t1 == t2 and len(t1) > 120)
 
+    testkit.release_logs()        # Windows will not delete an open log file
     shutil.rmtree(tmp)
     print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
     return 0 if ok else 1

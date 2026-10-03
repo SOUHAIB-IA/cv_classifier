@@ -281,6 +281,7 @@ def main() -> int:
               len(list(cfg.watch_dir.glob("*.pdf"))) == 4)
         check("...and it says why it stopped", bool(router.ai_down), router.ai_down)
     finally:
+        testkit.release_logs()    # Windows will not delete an open log file
         shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n4d. the watcher, started and stopped from the page")
@@ -299,10 +300,16 @@ def main() -> int:
         # here ever reaches a model.
         text = (S.ROOT / "config.example.toml").read_text()
         def put(key, value, body):
+            # as_posix(), because a TOML basic string reads a backslash as an
+            # escape: "C:\\Users\\..." starts \\U, which TOML parses as a
+            # unicode escape wanting eight hex digits and refuses. Forward
+            # slashes are valid paths on Windows too. The workflow learnt this
+            # before this test did.
+            v = value.as_posix() if isinstance(value, Path) else value
             out = []
             for line in body.splitlines():
                 head = line.split("=")[0].strip()
-                out.append(f'{key:<10} = "{value}"' if head == key else line)
+                out.append(f'{key:<10} = "{v}"' if head == key else line)
             return "\n".join(out)
         for k, v in (("cv_root", sand / "cvs"), ("watch_dir", sand / "watch"),
                      ("index_file", sand / "index.json"), ("log_file", sand / "log.log"),
@@ -312,6 +319,21 @@ def main() -> int:
             text = put(k, v, text)
         cfgp = sand / "config.toml"
         cfgp.write_text(text)
+
+        # The Windows shape of that defect, reproducible on any machine: it is
+        # a property of TOML, not of Windows, so it can be pinned here rather
+        # than waited for in CI.
+        import tomllib
+        try:
+            tomllib.loads('a = "C:\\Users\\runner\\x"')
+            refused = False
+        except tomllib.TOMLDecodeError:
+            refused = True
+        check("a backslash path in a TOML basic string is refused everywhere",
+              refused)
+        check("...and forward slashes are what make it readable",
+              tomllib.loads('a = "%s"' % Path("C:/Users/runner/x").as_posix())
+              == {"a": "C:/Users/runner/x"})
 
         sup.configure(cfgp)
         ok, msg = sup.start()
@@ -326,7 +348,7 @@ def main() -> int:
         ok, msg = sup.restart()
         check("a restart rereads the configuration", ok, msg)
         check("...and watches the folder you just chose",
-              sup.status()["watch_dir"] == str(sand / "ailleurs"),
+              Path(sup.status()["watch_dir"]) == sand / "ailleurs",
               sup.status()["watch_dir"])
         check("...and made that one too", (sand / "ailleurs").is_dir())
 
@@ -343,6 +365,15 @@ def main() -> int:
         a, b = W.Router(cfg), W.Router(cfg)
         check("every router shares one claim set", a._inflight is b._inflight)
         check("...and one lock over it", a._claim_lock is b._claim_lock)
+
+        # The other half of the CI failure: every router above opened a log
+        # inside this directory, and Windows will not delete an open file.
+        import logging
+        testkit.release_logs()
+        left = [h for n in list(logging.root.manager.loggerDict)
+                for h in logging.getLogger(n).handlers
+                if isinstance(h, logging.FileHandler)]
+        check("releasing the logs leaves no open log file behind", not left, left)
 
     print("\n4e. the desktop, three ways")
     import desktop as D
