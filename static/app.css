@@ -23,6 +23,7 @@ nav.top { display: flex; gap: 22px; align-items: center; padding: 12px 24px;
 nav.top b { font-size: 15px; letter-spacing: -.01em; }
 nav.top a { text-decoration: none; color: var(--muted); font-weight: 500; }
 nav.top a.on { color: var(--ink); }
+nav.top a.out::after { content: "\2197"; font-size: 11px; margin-left: 3px; vertical-align: 1px; }
 nav.top .sp { flex: 1; }
 main { max-width: 1320px; margin: 0 auto; padding: 22px 24px 80px; }
 h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.01em; }

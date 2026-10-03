@@ -35,6 +35,7 @@ every posting from any of them.
 | **Données** | every posting ever seen: search, filter, sort, export as CSV |
 | **Canada** | paste a Canadian ad, get a Canadian-format resume and what changed |
 | **Réglages** | every setting, with the sentence that explains it |
+| **Avis** | opens the feedback form, because what broke for you is worth knowing |
 
 ## Job application pipeline
 

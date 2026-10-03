@@ -8,6 +8,11 @@
   <a href="/data" {% if here == 'data' %}class="on"{% endif %}>Données</a>
   <a href="/canada" {% if here == 'canada' %}class="on"{% endif %}>Canada</a>
   <a href="/settings" {% if here == 'settings' %}class="on"{% endif %}>Réglages</a>
+  {# Avis is the only link here that leaves the application, so it carries the
+     arrow: a tab should say where it goes before it is clicked, not after. #}
+  <a href="https://docs.google.com/forms/d/e/1FAIpQLSeCU74m4bBHmt6phtMkIk17LIEdzGxf9qwiNqVjj5ICgz0Csw/viewform"
+     class="out" target="_blank" rel="noopener noreferrer"
+     title="Deux minutes, anonyme, aucun compte requis">Avis</a>
   <button class="sbox" id="open-search" title="Rechercher (Ctrl+K)">
     <span>Rechercher une offre</span><kbd>Ctrl K</kbd></button>
   <span class="sp"></span>
