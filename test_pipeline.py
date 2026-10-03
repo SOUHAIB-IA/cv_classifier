@@ -596,6 +596,69 @@ def main():
     check("...and never mentions Anthropic for a non-Anthropic provider",
           "anthropic" not in _r.get("error", "").lower(), _r)
 
+    print("\n7b-ter. four providers, one code path, no provider package")
+    # The claim this pins: a provider does not need its own SDK here. Groq,
+    # Gemini, Mistral, DeepSeek, OpenRouter and Ollama all accept the same
+    # request at /chat/completions, so one httpx POST reaches all of them and
+    # adding one is four lines of data. A fake provider speaking that shape
+    # stands in for all of them, which also means this needs no real key.
+    import json as _json
+    import threading as _th
+    from http.server import BaseHTTPRequestHandler as _BH, HTTPServer as _HS
+
+    _seen = []
+
+    class _Fake(_BH):
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length", 0))
+            body = _json.loads(self.rfile.read(n) or b"{}")
+            _seen.append({"path": self.path, "model": body.get("model"),
+                          "auth": self.headers.get("Authorization", "")})
+            out = _json.dumps({"choices": [{"message": {
+                "content": '{"ok": true}'}}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def log_message(self, *a):
+            pass
+
+    _srv = _HS(("127.0.0.1", 0), _Fake)
+    _th.Thread(target=_srv.serve_forever, daemon=True).start()
+    _base = f"http://127.0.0.1:{_srv.server_address[1]}/v1"
+    _keys = tmp / "keys"
+    _keys.mkdir(exist_ok=True)
+    _want = [("groq", "llama-3.3-70b-versatile", "gsk_x"),
+             ("google", "gemini-2.0-flash", "AIza_x"),
+             ("mistral", "mistral-small-latest", "mi_x"),
+             ("deepseek", "deepseek-chat", "sk-x")]
+    for _name, _model, _key in _want:
+        _kf = _keys / f"{_name}.key"
+        _kf.write_text(_key)
+        _c = replace(cfg, backend="api", provider=_name, base_url=_base,
+                     model=_model, key_file=_kf)
+        check(f"{_name} answers through the shared path",
+              cr.ask_json(_c, "Reply in JSON.", "ping") == {"ok": True})
+    _srv.shutdown()
+    check("each call carried its own model name",
+          [s["model"] for s in _seen] == [m for _, m, _ in _want],
+          [s["model"] for s in _seen])
+    check("each call carried its own key",
+          all(s["auth"] == f"Bearer {k}" for s, (_, _, k) in zip(_seen, _want)),
+          [s["auth"] for s in _seen])
+    check("all four hit the same endpoint",
+          {s["path"] for s in _seen} == {"/v1/chat/completions"},
+          {s["path"] for s in _seen})
+    # requirements.txt declares one provider package, and it is optional.
+    _req = (HERE / "requirements.txt").read_text()
+    _pkgs = [l.split("==")[0] for l in _req.splitlines()
+             if l.strip() and not l.startswith("#")]
+    check("no SDK was installed for any of them",
+          not {"openai", "google-generativeai", "groq", "mistralai",
+               "langchain", "langchain-core"} & set(_pkgs), _pkgs)
+
     print("\n7c. settings written back into the TOML files")
     import settings as ST
     for name, path in ST.FILES.items():
