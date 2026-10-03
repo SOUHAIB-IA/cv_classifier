@@ -395,9 +395,18 @@ any file imports a module the standard library ships only on Unix, which is the
 defect that made this Linux-only in the first place — `fcntl` at the top of two
 modules, so on Windows nothing ran at all.
 
-Three things are still Linux-only, and all three degrade rather than break: the
-desktop notification (`notify-send`), the "show me this file" button
-(`dbus-send` and `xdg-open`), and the button that restarts the watcher service.
+The desktop gestures go through `desktop.py`, which knows the three ways to make
+each one: a notification through `notify-send`, `osascript` or a PowerShell
+balloon; showing a file through `FileManager1.ShowItems`, `open -R` or
+`explorer /select,`. None of them is essential, so each returns False rather
+than raising — a notification that does not appear must not stop the watcher
+from filing a CV. `test_portable.py` fails if any module outside `desktop.py`
+calls one of those tools directly.
+
+The one button that did not survive the move is "restart the watcher". It
+existed because the watcher was a systemd service; started with `start.py` it is
+a thread inside the application, so the button now says to stop with Ctrl+C and
+start again rather than calling systemctl at something that is not there.
 
 Every push runs the suites on **ubuntu-latest, windows-latest and
 macos-latest** (`.github/workflows/tests.yml`). That is the point of the

@@ -188,30 +188,19 @@ def load_config(path: Path | None = None) -> Config:
 
 
 # ------------------------------------------------------------ notifications --
-_ICONS = {
-    "filed": "document-save",
-    "duplicate": "edit-copy",
-    "lowconf": "dialog-question",
-    "skipped": "dialog-information",
-    "error": "dialog-error",
-}
-_URGENCY = {"error": "critical", "lowconf": "normal"}
-
-
 def notify(cfg: Config, kind: str, title: str, body: str = "") -> None:
     """Desktop notification. Never raises — a missing notifier must not stop
-    the daemon from doing its job."""
+    the daemon from doing its job.
+
+    The gesture itself lives in desktop.py, which knows the three ways to make
+    it: notify-send, osascript, or a PowerShell balloon.
+    """
     n = cfg.notify
     if not n.get("enabled") or not n.get(f"on_{kind}", True):
         return
     try:
-        subprocess.run(
-            ["notify-send", "-a", "cv-router",
-             "-i", _ICONS.get(kind, "document-save"),
-             "-u", _URGENCY.get(kind, "low"),
-             title, body],
-            capture_output=True, timeout=10,
-        )
+        import desktop
+        desktop.notify(kind, title, body)
     except Exception:
         pass
 

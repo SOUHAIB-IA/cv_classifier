@@ -35,6 +35,7 @@ from pipeline import sources as SRC
 from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 import settings as ST
+import desktop
 
 HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -383,11 +384,10 @@ def settings_restart(x_cv_router: str | None = Header(default=None)):
     It rereads both files per request and needs no restart.
     """
     _guard(x_cv_router)
-    r = subprocess.run(["systemctl", "--user", "restart", "cv-router-watcher.service"],
-                       capture_output=True, text=True, timeout=30)
-    if r.returncode != 0:
-        raise HTTPException(400, (r.stderr or r.stdout).strip()[:200] or "échec")
-    return {"ok": True}
+    ok, message = desktop.restart_watcher()
+    if not ok:
+        raise HTTPException(400, message)
+    return {"ok": True, "message": message}
 
 
 @router.get("/api/pipeline/charts")
@@ -727,9 +727,9 @@ def job_reveal(job_id: str, x_cv_router: str | None = Header(default=None)):
     the CVs are filed by date, so the right one is several clicks away however
     well it is named. Selected in a window, it is one drag onto the page.
 
-    FileManager1.ShowItems selects the file; xdg-open on its folder is the
-    fallback for a desktop without it, and shows the folder rather than
-    nothing.
+    Selecting the file is the point; a folder shown without the selection is
+    the fallback on every platform, and beats nothing. desktop.reveal knows the
+    three ways: explorer /select, open -R, or FileManager1.ShowItems.
     """
     _guard(x_cv_router)
     pcfg, cfg, db = _ctx()
@@ -742,17 +742,12 @@ def job_reveal(job_id: str, x_cv_router: str | None = Header(default=None)):
     except SUB.NoDisplay as e:
         raise HTTPException(400, str(e))
 
-    shown = subprocess.run(
-        ["dbus-send", "--session", "--dest=org.freedesktop.FileManager1",
-         "--type=method_call", "/org/freedesktop/FileManager1",
-         "org.freedesktop.FileManager1.ShowItems",
-         f"array:string:{pdf.as_uri()}", "string:"],
-        capture_output=True, text=True, env=env, timeout=20)
-    if shown.returncode != 0:
-        subprocess.Popen(["xdg-open", str(pdf.parent)], env=env,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return {"ok": True, "selected": False, "path": str(pdf)}
-    return {"ok": True, "selected": True, "path": str(pdf)}
+    opened, selected = desktop.reveal(pdf, env=env)
+    if not opened:
+        raise HTTPException(
+            400, f"nothing on this desktop could open a folder. The file is "
+                 f"at {pdf}")
+    return {"ok": True, "selected": selected, "path": str(pdf)}
 
 
 @router.post("/api/job/{job_id:path}/status")

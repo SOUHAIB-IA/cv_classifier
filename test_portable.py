@@ -213,6 +213,48 @@ def main() -> int:
         check("a missing config names the file to copy",
               any("config.example.toml" in f for f in fatal), fatal)
 
+    print("\n4c. the desktop, three ways")
+    import desktop as D
+    check("this platform is one it knows",
+          D.SYSTEM in ("Linux", "Windows", "Darwin"), D.SYSTEM)
+    # These three gestures are advisory. A notification that does not appear and
+    # a folder that does not open are an inconvenience; raising would stop the
+    # watcher from filing a CV over a missing notifier.
+    check("notify never raises, whatever the desktop answers",
+          D.notify("filed", "cv-router", "test") in (True, False))
+    with tempfile.TemporaryDirectory() as td:
+        missing = Path(td) / "does-not-exist.pdf"
+        got = D.reveal(missing)
+        check("reveal returns (opened, selected) and never raises",
+              isinstance(got, tuple) and len(got) == 2
+              and all(isinstance(x, bool) for x in got), got)
+        check("open_folder on a real folder answers a bool",
+              isinstance(D.open_folder(Path(td)), bool))
+    # The quoting is the part that breaks silently: an apostrophe in a company
+    # name reaching PowerShell unescaped would end the string early.
+    check("PowerShell quoting doubles the apostrophe",
+          D._ps_quote("O'Brien & Co") == "'O''Brien & Co'", D._ps_quote("O'Brien & Co"))
+    check("osascript quoting escapes the double quote",
+          D._osa_quote('say "hi"') == '"say \\"hi\\""', D._osa_quote('say "hi"'))
+    # start.py runs the watcher in a thread, so there is no service to restart.
+    # The button must say that rather than fail with a systemctl error.
+    mgr = D.service_manager()
+    check("the service manager is named, or honestly absent",
+          mgr in ("systemd", None), mgr)
+    ok_r, msg = D.restart_watcher()
+    check("restart_watcher explains itself when there is no service",
+          ok_r or ("Ctrl+C" in msg or "service" in msg), msg)
+    check("no module outside desktop.py calls a Linux-only tool",
+          not [f for f in files
+               if f.name not in ("desktop.py", "test_portable.py")
+               and any(tool in f.read_text(encoding="utf-8")
+                       for tool in ('"notify-send"', '"dbus-send"',
+                                    '"xdg-open"'))],
+          [f.name for f in files
+           if f.name not in ("desktop.py", "test_portable.py")
+           and any(tool in f.read_text(encoding="utf-8")
+                   for tool in ('"notify-send"', '"dbus-send"', '"xdg-open"'))])
+
     print("\n5. it starts, serves every page, and stops")
     if not (HERE / "config.toml").is_file():
         print("  skip  no config.toml on this machine")
