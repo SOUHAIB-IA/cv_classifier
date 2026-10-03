@@ -134,6 +134,41 @@ function brainExtras() {
     </div>`;
 }
 
+// The watcher reads these settings once, when it starts. Until this panel
+// existed the only way to apply a change was Ctrl+C in the terminal it was
+// started from, which is not a thing you can ask of someone who just typed
+// their name into a web page.
+function watcherPanel() {
+  const w = S.watcher || {};
+  if (!w.managed) {
+    return `<div class="set">
+      <div class="slab">La surveillance</div>
+      <div class="fhelp">Cette application ne la pilote pas : elle a été lancée autrement
+        qu'avec <code>python start.py</code>. Tes réglages sont bien enregistrés, mais
+        c'est au programme qui tient la surveillance de les relire.</div>
+    </div>`;
+  }
+  const todo = w.todo || [];
+  const state = w.running
+    ? `<div class="okline"><b>✓</b><span>en marche sur <code>${esc(w.watch_dir || "")}</code>${
+        w.dry_run ? ", essai à blanc, rien ne bouge" : ""}${
+        w.sweeping ? ", rattrapage en cours" : ""}</span></div>`
+    : `<div class="noline"><b>✕</b><span>à l'arrêt : aucun PDF n'est classé</span></div>`;
+  return `<div class="set">
+    <div class="slab">La surveillance</div>
+    <div class="fhelp">Elle lit le dossier surveillé et range les CV qui y arrivent.
+      Elle relit ces réglages à chaque démarrage : un changement s'applique en
+      redémarrant ici, sans retourner dans le terminal.</div>
+    ${state}
+    ${todo.length ? `<div class="fhelp">Il manque ${todo.map(esc).join(", et ")}.</div>` : ""}
+    <div class="acts">
+      ${w.running
+        ? `<button id="w-stop">Arrêter</button><button id="w-restart">Redémarrer</button>`
+        : `<button id="w-start"${todo.length ? " disabled" : ""}>Démarrer</button>`}
+    </div>
+  </div>`;
+}
+
 // Getting a company's slug wrong otherwise costs a whole 45-minute cycle to
 // find out, so this asks the three platforms directly and says which one has it.
 function boardFinder() {
@@ -159,6 +194,7 @@ function render() {
     <section class="tab ${g.id === tab ? "on" : ""}" id="g-${g.id}">
       <div class="card">
         ${g.fields.filter(shown).map(field).join("")}
+        ${g.id === "start" ? watcherPanel() : ""}
         ${g.id === "brain" ? brainExtras() : ""}
         ${g.id === "sources" ? boardFinder() : ""}
       </div>
@@ -199,6 +235,17 @@ document.getElementById("groups").addEventListener("keydown", ev => {
 });
 
 document.getElementById("groups").addEventListener("click", async ev => {
+  const order = (ev.target.id || "").startsWith("w-") ? ev.target.id.slice(2) : "";
+  if (["start", "stop", "restart"].includes(order)) {
+    ev.target.disabled = true;
+    try {
+      const r = await api("/api/watcher/" + order, {});
+      S.watcher = r.status;
+      toast("Surveillance : " + r.message);
+    } catch (e) { toast("Échec : " + e.message); }
+    render();
+    return;
+  }
   const del = ev.target.dataset.del;
   if (del) {
     const arr = [...(val(del) || [])];
@@ -287,7 +334,18 @@ document.getElementById("b-save").onclick = async () => {
   try {
     const r = await api("/api/settings", { changes: edits });
     S.values = r.values; edits = {};
-    toast(`Enregistré : ${r.changed.length} réglage(s). Le pipeline les utilise déjà.`);
+    let note = `Enregistré : ${r.changed.length} réglage(s). Le pipeline les utilise déjà.`;
+    // The pipeline rereads its file per request; the watcher does not. Saving a
+    // setting it reads and leaving it on the old one is a page that lies about
+    // what it just did.
+    if (S.watcher && S.watcher.managed && S.watcher.running) {
+      try {
+        const w = await api("/api/watcher/restart", {});
+        S.watcher = w.status;
+        note += " La surveillance a redémarré dessus.";
+      } catch (e) { note += " La surveillance, elle, n'a pas redémarré : " + e.message; }
+    }
+    toast(note);
     render();
   } catch (e) { toast("Refusé : " + e.message); b.disabled = false; }
 };
@@ -302,6 +360,7 @@ document.getElementById("b-restart").onclick = async ev => {
 (async () => {
   try {
     S = await api("/api/settings");
+    try { S.watcher = await api("/api/watcher"); } catch (e) { S.watcher = null; }
     render();
     pollTest();
   } catch (e) {

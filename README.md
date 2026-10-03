@@ -391,6 +391,21 @@ machine it was written on watched exactly that happen.
 `install.sh` is still there for the systemd services on Linux, and is now
 optional: it buys you start-on-login, nothing else.
 
+### The watcher is driven from the page
+
+The watcher reads the settings once, when it starts, so a setting changed while
+it runs would not reach it. The **Pour commencer** tab carries a panel that
+says whether it is running and on which folder, with Start, Stop and Restart.
+Saving a setting restarts it for you, so what the page says and what the
+watcher does cannot drift apart.
+
+It is the same process throughout: `python start.py` runs the watcher in a
+thread beside the web app, and the panel talks to that thread. Started any
+other way, the panel says it is not in charge rather than pretending to drive
+something it cannot reach. The old button called `systemctl --user restart`,
+which exists only if you ran `install.sh` and never existed at all on Windows
+or macOS; that path is still there for the people who installed the services.
+
 ### Running on Windows and macOS
 
 The locking goes through portalocker (`flock` on Unix, `LockFileEx` on Windows)

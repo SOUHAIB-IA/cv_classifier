@@ -24,23 +24,33 @@ import cvrouter as cr
 
 
 class Router:
+    # Shared by every Router in this process, not held per instance. Restarting
+    # the watcher from the Settings page builds a new Router while the previous
+    # one may still be finishing the file it had started, and the same PDF must
+    # not be classified twice by the two of them.
+    #
+    # Paths being processed right now, which also collapses the burst of
+    # created / modified / moved events a single download fires.
+    _inflight: set[str] = set()
+    # The observer thread and the catch-up sweep both call handle(), so the
+    # claim and every index mutation have to be atomic.
+    _claim_lock = threading.Lock()
+    _index_lock = threading.Lock()
+
     def __init__(self, cfg: cr.Config, dry_run: bool = False):
         self.cfg = cfg
         self.dry_run = dry_run or cfg.dry_run
         self.log = cr.setup_logging(cfg, "watcher")
         self.index = cr.Index(cfg)
-        # Paths being processed right now — collapses the burst of created /
-        # modified / moved events a single download fires.
-        self._inflight: set[str] = set()
         # Identities already dealt with, so a file we deliberately left in
         # Downloads is not re-classified on every later event, nor on every
         # restart. Keyed on path+size+mtime, NOT on path alone: browsers reuse
         # filenames, and a fresh download of an old name must still be processed.
         self._seen = cr.SeenStore(cfg)
-        # The observer thread and the startup sweep both call handle(), so the
-        # claim and every index mutation have to be atomic.
-        self._claim_lock = threading.Lock()
-        self._index_lock = threading.Lock()
+        # Raised by the supervisor when this watcher is being replaced. The
+        # sweep checks it between files: it stops at a file boundary, never in
+        # the middle of one that is already being moved.
+        self.stopping = False
         # Set by _handle when the model could not be reached. The catch-up
         # sweep reads it and stops: one failure over a backlog predicts the
         # next two hundred, and the first user outside this machine watched
@@ -228,6 +238,9 @@ class Router:
         """
         self.ai_down = None
         for p in sorted(self.cfg.watch_dir.glob("*.pdf")):
+            if self.stopping:
+                self.log.info("sweep stopped: this watcher was replaced")
+                return
             self.handle(p)
             if self.ai_down:
                 self.log.error(

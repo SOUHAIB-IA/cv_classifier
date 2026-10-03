@@ -283,7 +283,68 @@ def main() -> int:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("\n4d. the desktop, three ways")
+    print("\n4d. the watcher, started and stopped from the page")
+    import supervisor as SUP
+
+    sup = SUP.Supervisor()
+    check("before a launcher hands it the job, it says it is not in charge",
+          sup.status()["managed"] is False)
+    ok, msg = sup.start()
+    check("...and refuses to start something it was never given",
+          not ok, msg)
+
+    with tempfile.TemporaryDirectory() as td:
+        sand = Path(td)
+        # A provider that needs no key, so the setup is complete and nothing
+        # here ever reaches a model.
+        text = (S.ROOT / "config.example.toml").read_text()
+        def put(key, value, body):
+            out = []
+            for line in body.splitlines():
+                head = line.split("=")[0].strip()
+                out.append(f'{key:<10} = "{value}"' if head == key else line)
+            return "\n".join(out)
+        for k, v in (("cv_root", sand / "cvs"), ("watch_dir", sand / "watch"),
+                     ("index_file", sand / "index.json"), ("log_file", sand / "log.log"),
+                     ("seen_file", sand / "seen.json"), ("dupe_dir", sand / "dupes"),
+                     ("text_cache_dir", ""), ("provider", "ollama"),
+                     ("owner_name", "Hamza"), ("owner_surname", "BENNANI")):
+            text = put(k, v, text)
+        cfgp = sand / "config.toml"
+        cfgp.write_text(text)
+
+        sup.configure(cfgp)
+        ok, msg = sup.start()
+        check("configured, it starts", ok, msg)
+        check("...and says so", sup.status()["running"] is True)
+        check("...and made the folder it watches", (sand / "watch").is_dir())
+        check("starting twice is refused, not doubled", not sup.start()[0])
+
+        # The whole point: a setting changed a second ago takes effect without
+        # anyone going back to the terminal the program was started from.
+        cfgp.write_text(put("watch_dir", sand / "ailleurs", cfgp.read_text()))
+        ok, msg = sup.restart()
+        check("a restart rereads the configuration", ok, msg)
+        check("...and watches the folder you just chose",
+              sup.status()["watch_dir"] == str(sand / "ailleurs"),
+              sup.status()["watch_dir"])
+        check("...and made that one too", (sand / "ailleurs").is_dir())
+
+        check("it stops", sup.stop()[0])
+        check("...and stays stopped", sup.status()["running"] is False)
+        check("stopping twice is refused, not an error on the page",
+              not sup.stop()[0])
+
+        # Two routers exist for a moment during a restart. The claim set is on
+        # the class, so the file one of them is finishing cannot be picked up
+        # by the other.
+        import watcher as W
+        cfg = cr.load_config(cfgp)
+        a, b = W.Router(cfg), W.Router(cfg)
+        check("every router shares one claim set", a._inflight is b._inflight)
+        check("...and one lock over it", a._claim_lock is b._claim_lock)
+
+    print("\n4e. the desktop, three ways")
     import desktop as D
     check("this platform is one it knows",
           D.SYSTEM in ("Linux", "Windows", "Darwin"), D.SYSTEM)

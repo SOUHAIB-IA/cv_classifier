@@ -36,6 +36,7 @@ from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 import settings as ST
 import desktop
+import supervisor
 
 HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -382,12 +383,46 @@ def settings_restart(x_cv_router: str | None = Header(default=None)):
 
     Deliberately not the portal: that is the process answering this request.
     It rereads both files per request and needs no restart.
+
+    Started with `python start.py`, the watcher is a thread in this process and
+    is restarted here, directly. Installed as a systemd service instead, it
+    goes through systemctl. If it is neither, desktop.restart_watcher() says so
+    rather than report a success nobody can see.
     """
     _guard(x_cv_router)
-    ok, message = desktop.restart_watcher()
+    if supervisor.WATCHER.managed:
+        ok, message = supervisor.WATCHER.restart()
+    else:
+        ok, message = desktop.restart_watcher()
     if not ok:
         raise HTTPException(400, message)
     return {"ok": True, "message": message}
+
+
+@router.get("/api/watcher")
+def watcher_status():
+    """What the watcher is doing. Read-only, and safe before anything starts."""
+    return supervisor.WATCHER.status()
+
+
+@router.post("/api/watcher/{order}")
+def watcher_order(order: str, x_cv_router: str | None = Header(default=None)):
+    """start, stop or restart the watcher of this process.
+
+    The answer carries the new status, so the page never has to guess what it
+    just did, nor poll to find out.
+    """
+    _guard(x_cv_router)
+    if order not in ("start", "stop", "restart"):
+        raise HTTPException(404, f"unknown order: {order}")
+    if not supervisor.WATCHER.managed:
+        raise HTTPException(400,
+            "cette application ne gère pas la surveillance : elle a été lancée "
+            "autrement qu'avec « python start.py ».")
+    ok, message = getattr(supervisor.WATCHER, order)()
+    if not ok:
+        raise HTTPException(400, message)
+    return {"ok": True, "message": message, "status": supervisor.WATCHER.status()}
 
 
 @router.get("/api/pipeline/charts")

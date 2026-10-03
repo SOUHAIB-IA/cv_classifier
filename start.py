@@ -137,37 +137,6 @@ def preflight(cfg_path: Path | None) -> tuple[list[str], list[str]]:
     return fatal, warn
 
 
-def start_watcher(cfg, dry_run: bool = False):
-    """The folder watcher, in a thread of its own.
-
-    watchdog picks the platform's own mechanism: inotify on Linux,
-    ReadDirectoryChangesW on Windows, FSEvents on macOS. Nothing here is
-    Linux-specific.
-
-    It is a daemon thread, so Ctrl+C in the web app stops everything, and any
-    error inside it is logged rather than taking the whole application down:
-    a CV that fails to classify must not close the window you are reading.
-    """
-    from watchdog.observers import Observer
-
-    import watcher as W
-
-    router = W.Router(cfg, dry_run=dry_run)
-    obs = Observer()
-    obs.schedule(W.Handler(router), str(cfg.watch_dir), recursive=False)
-    obs.start()
-
-    def sweep():
-        try:
-            router.sweep()
-        except Exception:
-            router.log.exception("the catch-up sweep failed; "
-                                 "the watcher is still running")
-
-    threading.Thread(target=sweep, name="cv-router-sweep", daemon=True).start()
-    return obs, router
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="python start.py",
@@ -204,12 +173,17 @@ def main(argv: list[str] | None = None) -> int:
     port = args.port or cfg.port
     url = f"http://{host}:{port}"
 
+    # The watcher belongs to the supervisor from here on, so the Settings page
+    # can stop and start it without anyone going back to this terminal.
+    from supervisor import WATCHER
+
+    WATCHER.configure(cfg_path, dry_run=args.dry_run)
+
     # Everything still missing, as sentences. The watcher does not start while
     # this is non-empty: without a brain it can only fail, once per file, with a
     # desktop notification each time.
     todo = cr.setup_todo(cfg)
 
-    obs = None
     if todo:
         # This block is in French, alone in an English file, because it is the
         # one thing a first-time user reads and it sends them to a page that is
@@ -218,24 +192,19 @@ def main(argv: list[str] | None = None) -> int:
         say("\n  Pas encore configuré. Il manque :")
         for item in todo:
             say(f"    - {item}")
-        say("  La page Réglages s'ouvre là-dessus. Le classement démarrera "
-            "au prochain lancement.")
+        say("  La page Réglages s'ouvre là-dessus. Une fois rempli, le bouton "
+            "« Démarrer » y lance le classement, sans relancer cette commande.")
     elif not args.no_watcher:
-        # Created rather than warned about: a folder that does not exist is a
-        # thing to make, not a thing to report.
-        for d in (cfg.watch_dir, cfg.cv_root):
-            try:
-                d.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                say(f"  note: could not create {d}: {e}")
-        try:
-            obs, _ = start_watcher(cfg, dry_run=args.dry_run)
+        # The supervisor creates the folders rather than complaining about
+        # them: a folder that does not exist is a thing to make.
+        ok, message = WATCHER.start()
+        if ok:
             say(f"  watching {cfg.watch_dir}  ->  {cfg.cv_root}"
                   + ("  (dry run, nothing moves)" if args.dry_run else ""))
-        except Exception as e:
+        else:
             # The web app is useful on its own, so a watcher that cannot start
             # is a warning and not the end of the session.
-            say(f"  note: the watcher could not start: {e}")
+            say(f"  note: the watcher did not start: {message}")
 
     landing = url + ("/settings" if todo else "")
     say(f"  open {landing}\n  Ctrl+C to stop")
@@ -253,9 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        if obs is not None:
-            obs.stop()
-            obs.join(timeout=5)
+        WATCHER.stop()
         say("stopped")
     return 0
 
