@@ -571,6 +571,31 @@ throughout. Treat Windows as usable but unverified until that suite passes.
 - Linux only. The daemon, the notifications and the installer all assume
   `systemd --user` and D-Bus.
 
-## License
+## License and what you are responsible for
 
-MIT — see [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE). Use it, change it, share it, for any
+noncommercial purpose: your own job hunt, study, research, a hobby. Selling it,
+hosting it as a paid service, or putting it inside something you sell needs
+written permission first. Ask.
+
+This is not an OSI open source licence, and that is the deliberate trade: the
+source is yours to read and run, the commercial rights are not.
+
+Commits published before this change were released under MIT, and that grant
+cannot be withdrawn for the versions that carried it.
+
+### What it will not do, and what is yours to carry
+
+It fills an employer's form and stops. It does not send on your behalf unless
+you turn that on yourself, and even then it refuses whenever a question is
+unanswered or the submit button is ambiguous. Everything that reaches an
+employer is your application, in your name, and you are responsible for what it
+says.
+
+Your CVs stay on your machine. The one thing that leaves it is the text of the
+job ad and of the CVs being compared, sent to whichever model provider you
+configured, under that provider's own terms. Choose Ollama if you want nothing
+to leave at all.
+
+The software comes as is, with no warranty. See the No Liability section of the
+licence.
