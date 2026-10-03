@@ -533,6 +533,14 @@ If neither is acceptable for your documents, do not use this.
 
 ## Known limits
 
+**Windows: one suite fails.** `test_routing.py` fails on `windows-latest` and
+the cause is not understood; the CI job runs and reports it but does not block.
+Everything that answers the portability question is green there: no Unix-only
+import, the lock taken, contended, waited on and released through `LockFileEx`,
+Chrome found, and `start.py` serving every page. Linux and macOS are green
+throughout. Treat Windows as usable but unverified until that suite passes.
+
+
 - **A site that detects bots will refuse an assisted fill, and it is right to.**
   The browser Playwright drives reports itself as automated. Nothing here hides
   that: the answer is the "Remplir à la main" panel, which hands you every value
