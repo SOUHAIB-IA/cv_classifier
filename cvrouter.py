@@ -187,6 +187,41 @@ def load_config(path: Path | None = None) -> Config:
     )
 
 
+
+def setup_todo(cfg: Config) -> list[str]:
+    """What is still missing before the watcher can do anything useful.
+
+    An empty list means ready. Each entry is a sentence for a person rather
+    than a key name: the first run of this program is someone else's first run,
+    and a setting that is missing has to say what to do about it.
+
+    This exists because a missing brain used to be a warning. The watcher then
+    started, swept the whole download folder, and failed once per PDF with a
+    desktop notification each time. The first real user outside this machine
+    watched his insurance papers scroll past as errors.
+    """
+    todo: list[str] = []
+
+    if not (cfg.owner_name.strip() or cfg.owner_surname.strip()):
+        todo.append("ton nom, pour reconnaître TES CV parmi ceux que tu as pu "
+                    "télécharger pour d'autres, et nommer les fichiers rangés")
+
+    if cfg.backend == "claude_cli":
+        binp = Path(cfg.claude_bin) if cfg.claude_bin else find_claude_bin()
+        if not binp or not Path(binp).exists():
+            todo.append("un cerveau : l'abonnement Claude est choisi mais "
+                        "Claude Code est introuvable. Choisis une clé API, "
+                        "ou installe Claude Code")
+    else:
+        info = PROVIDERS.get(cfg.provider, {})
+        if not info:
+            todo.append(f"un fournisseur connu : « {cfg.provider} » n'en est pas un")
+        elif not info.get("no_key") and not cfg.api_key:
+            todo.append(f"une clé API pour {info.get('label', cfg.provider)}")
+
+    return todo
+
+
 # ------------------------------------------------------------ notifications --
 def notify(cfg: Config, kind: str, title: str, body: str = "") -> None:
     """Desktop notification. Never raises — a missing notifier must not stop

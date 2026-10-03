@@ -63,6 +63,42 @@ def find_chrome() -> str | None:
     return browsers.find_chrome()
 
 
+# The three files the program writes to, and the examples they come from. Only
+# the examples are in the repository, so a fresh clone has none of the three.
+# All three matter on a first run, not just the config: settings.py reads
+# pipeline.toml every time the Settings page loads, so a first run that lands
+# there without it would answer 500 instead of a form.
+FIRST_RUN_FILES = (("config.toml", "config.example.toml"),
+                   ("pipeline.toml", "pipeline.example.toml"),
+                   ("profile.toml", "profile.example.toml"))
+
+
+def ensure_config(path: Path | None) -> Path:
+    """The files the program writes to, copied from their examples the first
+    time. Returns the config path.
+
+    A first run used to stop with three `cp` commands, and the people this is
+    for do not type commands.
+
+    They are copied rather than generated because in these files the comments
+    are the documentation, and settings.py patches them in place to keep them.
+    A config built from code would lose every explanation the first time
+    someone saved a setting from the web page.
+    """
+    cfg_path = path or ROOT / "config.toml"
+    made = []
+    for target, example in FIRST_RUN_FILES:
+        dest = cfg_path if target == "config.toml" else ROOT / target
+        src = ROOT / example
+        if dest.is_file() or not src.is_file():
+            continue
+        shutil.copy2(src, dest)
+        made.append(dest.name)
+    if made:
+        say(f"  first run: {', '.join(made)} written from the examples")
+    return cfg_path
+
+
 def preflight(cfg_path: Path | None) -> tuple[list[str], list[str]]:
     """Everything that must be true before starting. (fatal, warnings)"""
     system = platform.system()
@@ -80,9 +116,11 @@ def preflight(cfg_path: Path | None) -> tuple[list[str], list[str]]:
                      f"it.\n      {hint['chrome']}")
 
     if not (cfg_path or ROOT / "config.toml").is_file():
-        fatal.append("no config.toml. Copy the example and open the Settings "
-                     "page to fill it in:\n"
-                     "      cp config.example.toml config.toml")
+        # ensure_config() runs before this and copies the example, so reaching
+        # here means the example is gone too.
+        fatal.append("no config.toml, and no config.example.toml to copy it "
+                     "from.\n      Restore config.example.toml from the "
+                     "repository and start again.")
         return fatal, warn
 
     import cvrouter as cr
@@ -92,17 +130,10 @@ def preflight(cfg_path: Path | None) -> tuple[list[str], list[str]]:
         fatal.append(f"config.toml could not be read: {e}")
         return fatal, warn
 
-    if not cfg.cv_root.is_dir():
-        warn.append(f"the CV folder does not exist yet: {cfg.cv_root}")
-    if not cfg.watch_dir.is_dir():
-        warn.append(f"the watch folder does not exist: {cfg.watch_dir}")
-    if cfg.backend == "claude_cli" and not cr.find_claude_bin():
-        warn.append("the brain is set to the Claude Code CLI but no Claude Code "
-                    "install was found. Open Settings and pick a provider, or "
-                    "paste an API key.")
-    elif cfg.backend == "api" and not cfg.api_key:
-        warn.append("the brain is set to an API key and there is none. Open "
-                    "Settings and paste one.")
+    # The folders are created rather than complained about, and what is missing
+    # from the settings is cr.setup_todo()'s job: it decides whether the watcher
+    # may start at all, which a warning printed into a scrolling terminal never
+    # did.
     return fatal, warn
 
 
@@ -155,7 +186,9 @@ def main(argv: list[str] | None = None) -> int:
     say(f"cv-router on {platform.system()} {platform.release()}, "
           f"Python {platform.python_version()}")
 
-    fatal, warn = preflight(args.config)
+    cfg_path = ensure_config(args.config)
+
+    fatal, warn = preflight(cfg_path)
     for w in warn:
         say(f"  note: {w}")
     if fatal:
@@ -166,12 +199,35 @@ def main(argv: list[str] | None = None) -> int:
 
     import cvrouter as cr
 
-    cfg = cr.load_config(args.config)
+    cfg = cr.load_config(cfg_path)
     host = args.host or cfg.host
     port = args.port or cfg.port
+    url = f"http://{host}:{port}"
+
+    # Everything still missing, as sentences. The watcher does not start while
+    # this is non-empty: without a brain it can only fail, once per file, with a
+    # desktop notification each time.
+    todo = cr.setup_todo(cfg)
 
     obs = None
-    if not args.no_watcher:
+    if todo:
+        # This block is in French, alone in an English file, because it is the
+        # one thing a first-time user reads and it sends them to a page that is
+        # in French. The language of the message and the language of the screen
+        # it points at have to match.
+        say("\n  Pas encore configuré. Il manque :")
+        for item in todo:
+            say(f"    - {item}")
+        say("  La page Réglages s'ouvre là-dessus. Le classement démarrera "
+            "au prochain lancement.")
+    elif not args.no_watcher:
+        # Created rather than warned about: a folder that does not exist is a
+        # thing to make, not a thing to report.
+        for d in (cfg.watch_dir, cfg.cv_root):
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                say(f"  note: could not create {d}: {e}")
         try:
             obs, _ = start_watcher(cfg, dry_run=args.dry_run)
             say(f"  watching {cfg.watch_dir}  ->  {cfg.cv_root}"
@@ -181,12 +237,12 @@ def main(argv: list[str] | None = None) -> int:
             # is a warning and not the end of the session.
             say(f"  note: the watcher could not start: {e}")
 
-    url = f"http://{host}:{port}"
-    say(f"  open {url}\n  Ctrl+C to stop")
+    landing = url + ("/settings" if todo else "")
+    say(f"  open {landing}\n  Ctrl+C to stop")
 
     if not args.no_browser:
         # After a short delay, so the first request does not race the server.
-        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.5, lambda: webbrowser.open(landing)).start()
 
     import uvicorn
 

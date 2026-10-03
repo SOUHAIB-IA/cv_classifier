@@ -66,6 +66,26 @@ CLI_MODELS = [
 ]
 
 GROUPS: list[tuple[str, str, list[Field]]] = [
+    # First, because these four are what a first run is missing. Until the name
+    # and the brain are set, start.py does not launch the watcher at all and
+    # opens this page instead.
+    ("start", "Pour commencer", [
+        Field("behaviour.owner_name", "config", "Ton prénom", "text",
+              "Sert à deux choses : reconnaître TES CV parmi ceux que tu as pu "
+              "télécharger pour quelqu'un d'autre, et nommer les fichiers "
+              "rangés. Tant qu'il est vide, rien n'est classé."),
+        Field("behaviour.owner_surname", "config", "Ton nom", "text",
+              "En majuscules si tu veux le voir en majuscules dans les noms "
+              "de fichiers."),
+        Field("paths.watch_dir", "config", "Le dossier surveillé", "text",
+              "Chaque PDF qui arrive ici est lu, puis rangé s'il s'agit de ton "
+              "CV. Un dossier dédié est le choix sûr. Tu peux mettre "
+              "~/Downloads, mais alors tous les PDF que tu télécharges y "
+              "passent, factures comprises."),
+        Field("paths.cv_root", "config", "Où ranger les CV", "text",
+              "Le dossier qui reçoit la collection triée. Il est créé s'il "
+              "n'existe pas."),
+    ]),
     ("brain", "Le cerveau", [
         Field("ai.backend", "config", "Comment payer les appels au modèle", "choice",
               "Ton abonnement Claude n'a pas besoin de clé : le programme lance "
@@ -388,6 +408,19 @@ def write(changes: dict) -> list[str]:
         tmp = path.with_suffix(path.suffix + ".new")
         tmp.write_text(text)
         os.replace(tmp, path)                        # atomic: no half-written file
+
+    # A folder named here is a folder meant to exist. Creating it now is the
+    # difference between a setting that works and one that reports, on the next
+    # start, that the place you just chose is not there.
+    for fid in ("paths.watch_dir", "paths.cv_root"):
+        if fid in clean:
+            d = Path(os.path.expanduser(str(clean[fid])))
+            if not d.is_absolute():
+                d = ROOT / d
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise SettingsError(f"le dossier {d} n'a pas pu être créé : {e}") from e
     return sorted(clean)
 
 

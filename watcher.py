@@ -41,6 +41,12 @@ class Router:
         # claim and every index mutation have to be atomic.
         self._claim_lock = threading.Lock()
         self._index_lock = threading.Lock()
+        # Set by _handle when the model could not be reached. The catch-up
+        # sweep reads it and stops: one failure over a backlog predicts the
+        # next two hundred, and the first user outside this machine watched
+        # every PDF in his download folder fail in turn, three seconds apart,
+        # with a desktop notification each time.
+        self.ai_down: str | None = None
 
     @staticmethod
     def _fingerprint(path: Path) -> str:
@@ -140,6 +146,7 @@ class Router:
         try:
             res = cr.classify_pdf(self.cfg, path, text=text)
         except cr.AIError as e:
+            self.ai_down = str(e)
             self.log.error("AI unavailable, leaving %s in place: %s", path.name, e)
             cr.notify(self.cfg, "error", "cv-router: IA indisponible",
                       f"{path.name} laissé dans Downloads.\n{e}")
@@ -213,8 +220,21 @@ class Router:
         )
 
     def sweep(self) -> None:
+        """The backlog already sitting in watch_dir, oldest name first.
+
+        It gives up on the first unreachable model. A live event does not: a
+        download arriving now is a new fact, and a network hiccup must not
+        silence the watcher for the rest of the session.
+        """
+        self.ai_down = None
         for p in sorted(self.cfg.watch_dir.glob("*.pdf")):
             self.handle(p)
+            if self.ai_down:
+                self.log.error(
+                    "sweep stopped at %s: %s. The files after it were left "
+                    "untouched. Fix the brain in Settings and start again.",
+                    p.name, self.ai_down)
+                return
 
 
 class Handler(FileSystemEventHandler):

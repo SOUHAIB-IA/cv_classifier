@@ -1,6 +1,10 @@
 [paths]
 cv_root    = "~/Documents/CVs"            # where your sorted CVs live
-watch_dir  = "~/Downloads"                # folder to watch
+# Every PDF that lands here is read and filed. A dedicated folder is the safe
+# default: pointed at ~/Downloads, the first run sweeps every PDF you have ever
+# downloaded, which is alarming on someone else's machine. You can still choose
+# ~/Downloads on the Settings page, knowing what it means.
+watch_dir  = "~/Documents/cv-router-inbox"
 index_file = "data/index.json"
 log_file   = "data/cv-router.log"
 # Decisions already made, so restarting the daemon does not re-classify the
@@ -14,9 +18,11 @@ text_cache_dir = "data/textcache"
 dupe_dir   = "~/Documents/CVs/_Duplicates-auto"
 
 [ai]
-# "claude_cli" runs the local Claude Code binary — uses your Claude subscription,
-# no API key needed. "api" uses the Anthropic API and needs a paid key.
-backend    = "claude_cli"
+# "api" is the default because it is the one anybody can satisfy: pick a
+# provider on the Settings page and paste a key, including a free one from Groq
+# or Google. "claude_cli" runs the local Claude Code binary and needs a Claude
+# subscription, so it cannot be what a first run assumes.
+backend    = "api"
 
 # --- claude_cli backend ---
 cli_model  = "sonnet"   # sonnet | haiku | opus
@@ -47,8 +53,11 @@ key_file   = "~/.config/cv-router/api_key"
 max_tokens = 4000
 
 [behaviour]
-owner_name     = "Ada"                    # your first name
-owner_surname  = "LOVELACE"               # your surname
+# Left empty on purpose: the watcher does not start until you fill these in on
+# the Settings page. They decide which CVs are yours and how files are named,
+# and there is no sensible guess for either.
+owner_name     = ""
+owner_surname  = ""
 # Filename prefix; defaults to "<owner_name>-<owner_surname>".
 file_prefix    = ""
 # Extra regex alternation for contact-detail lines to ignore when looking for

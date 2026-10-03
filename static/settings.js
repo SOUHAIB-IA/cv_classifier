@@ -7,7 +7,10 @@
 
 let S = null;            // schema + current values
 let edits = {};          // id -> new value, only what actually differs
-let tab = "brain";
+// The tab in view. Empty means the first one the server sends, so the order
+// of GROUPS in settings.py decides where a first run lands, and adding a
+// group never needs an edit here.
+let tab = "";
 let testTimer = null;
 
 const val = id => (id in edits ? edits[id] : S.values[id]);
@@ -149,6 +152,7 @@ function boardFinder() {
 }
 
 function render() {
+  if (!S.groups.some(g => g.id === tab)) tab = (S.groups[0] || {}).id || "";
   document.getElementById("tabs").innerHTML = S.groups.map(g =>
     `<button data-tab="${g.id}" class="${g.id === tab ? "on" : ""}">${esc(g.title)}</button>`).join("");
   document.getElementById("groups").innerHTML = S.groups.map(g => `

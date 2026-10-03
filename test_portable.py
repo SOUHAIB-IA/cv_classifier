@@ -207,13 +207,83 @@ def main() -> int:
         finally:
             browsers.find_chrome = real
 
-    # And a missing config says which file to copy.
+    # A first run writes its own config, because `cp` is a command and the
+    # people this is for do not type commands.
+    with tempfile.TemporaryDirectory() as td:
+        made = S.ensure_config(Path(td) / "config.toml")
+        check("a first run writes config.toml from the example", made.is_file(), made)
+        check("...and every file the Settings page reads, not just that one",
+              all((S.ROOT / f).is_file() for f, _ in S.FIRST_RUN_FILES),
+              [f for f, _ in S.FIRST_RUN_FILES if not (S.ROOT / f).is_file()])
+        check("...and it is the example, comments included",
+              made.read_text() == (S.ROOT / "config.example.toml").read_text())
+        check("...and a second run does not overwrite it",
+              (made.write_text("# touched\n"), S.ensure_config(made),
+               made.read_text() == "# touched\n")[2])
+
+    # Only if the example is gone too is it fatal, and it says so.
     with tempfile.TemporaryDirectory() as td:
         fatal, _ = S.preflight(Path(td) / "nope.toml")
-        check("a missing config names the file to copy",
+        check("with no example either, it names the file to restore",
               any("config.example.toml" in f for f in fatal), fatal)
 
-    print("\n4c. the desktop, three ways")
+    print("\n4c. the first run: nothing starts until it can work")
+    import cvrouter as cr
+    import testkit
+    import watcher as W
+
+    cfg, tmp = testkit.temp_config()
+    try:
+        cfg.owner_name = cfg.owner_surname = ""
+        cfg.backend = "api"
+        cfg.provider = "groq"
+        cfg.key_file = Path(tmp) / "no-key-here"
+        todo = cr.setup_todo(cfg)
+        check("a blank setup asks for the name", any("nom" in s for s in todo), todo)
+        check("...and for the key", any("clé API" in s for s in todo), todo)
+
+        cfg.provider = "ollama"
+        check("a provider that needs no key is not asked for one",
+              not any("clé" in s for s in cr.setup_todo(cfg)), cr.setup_todo(cfg))
+
+        cfg.owner_name, cfg.owner_surname = "Ada", "LOVELACE"
+        check("a complete setup has nothing left to do", cr.setup_todo(cfg) == [],
+              cr.setup_todo(cfg))
+
+        # The shipped example must never look ready: a first run that starts the
+        # watcher is a first run that files someone's CVs under a blank name.
+        shipped = cr.load_config(S.ROOT / "config.example.toml")
+        check("the shipped example is deliberately not ready",
+              cr.setup_todo(shipped) != [], cr.setup_todo(shipped))
+        check("...and its watch folder is not the download folder",
+              "Downloads" not in str(shipped.watch_dir), shipped.watch_dir)
+
+        # The sweep gives up on the first unreachable model instead of failing
+        # once per file, which is what the first user outside this machine saw.
+        for n in ("un", "deux", "trois", "quatre"):
+            testkit.make_pdf(cfg.watch_dir / f"{n}.pdf")
+        tries = []
+        real = cr.classify_pdf
+
+        def boom(c, path, text=None):
+            tries.append(path.name)
+            raise cr.AIError("pas de cerveau")
+
+        cr.classify_pdf = boom
+        try:
+            router = W.Router(cfg)
+            router.sweep()
+        finally:
+            cr.classify_pdf = real
+        check("the sweep stops at the first unreachable model",
+              len(tries) == 1, tries)
+        check("...and the files it never reached are still there",
+              len(list(cfg.watch_dir.glob("*.pdf"))) == 4)
+        check("...and it says why it stopped", bool(router.ai_down), router.ai_down)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("\n4d. the desktop, three ways")
     import desktop as D
     check("this platform is one it knows",
           D.SYSTEM in ("Linux", "Windows", "Darwin"), D.SYSTEM)

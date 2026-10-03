@@ -100,11 +100,12 @@ Keyword rules get all four wrong. Reading the document gets them right.
   employer's form when you ask it to. Playwright drives the Chrome you already
   have (`channel="chrome"`), so no browser is downloaded.
 - A model, either:
-  - **Claude Code** already installed and signed in — **no API key needed**, this
-    is the default; or
-  - **any API key**: Anthropic, OpenAI, Gemini, Mistral, Groq, DeepSeek,
+  - **any API key**, which is the default: Anthropic, OpenAI, Gemini, Mistral,
+    Groq, DeepSeek,
     OpenRouter, a model running locally under Ollama, or anything else speaking
-    the OpenAI chat-completions shape. Pick it in Réglages.
+    the OpenAI chat-completions shape. Pick it in Réglages; or
+  - **Claude Code** already installed and signed in, which needs no key but
+    needs a Claude subscription.
 
 ## Install
 
@@ -113,10 +114,6 @@ git clone https://github.com/<you>/cv-router.git
 cd cv-router
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
-
-cp config.example.toml config.toml       # paths and your name
-cp pipeline.example.toml pipeline.toml   # the pipeline, if you want it
-cp profile.example.toml profile.toml     # what goes on an employer's form
 
 ./.venv/bin/python indexer.py            # read your existing CVs
 ./install.sh                             # install the services
@@ -374,8 +371,15 @@ python start.py
 One command, one window, on Linux, macOS or Windows. The watcher runs in a
 background thread and the web app in the main one, so there is no service to
 install. Prerequisites are checked first and a missing one is reported as the
-sentence you need — which package to install, which file to copy — rather than
-as a traceback three minutes later.
+sentence you need, which package to install, rather than as a traceback three
+minutes later.
+
+**The first run writes its own settings files** from the examples beside them,
+opens the Settings page, and does not start the watcher. It tells you what is
+still missing, which is your name and a model, and nothing is filed until both
+are set. That is deliberate: without a model the watcher can only fail, once
+per PDF in the folder it watches, and the first person to run this outside the
+machine it was written on watched exactly that happen.
 
 | Flag | What it does |
 |---|---|
