@@ -576,6 +576,26 @@ def main():
     # ----------------------------------------------------------------- settings
     # patch() and coerce() only: write() edits the real config files, and a
     # test suite must never touch those.
+    print("\n7b-bis. the Test button reaches the provider you chose")
+    import settings as _ST
+    from dataclasses import replace as _replace
+    # It sent every provider through the Anthropic SDK, so Test failed for Groq,
+    # Gemini and the rest whatever the key was, and Ollama was untestable because
+    # it was asked for a key it does not use. Both are the free paths the guide
+    # recommends, so both have to answer honestly.
+    _oll = _replace(cfg, backend="api", provider="ollama", model="llama3.1")
+    _r = _ST.test_backend(_oll, timeout=5)
+    check("Ollama is not asked for a key it does not use",
+          "clé" not in _r.get("error", ""), _r)
+    check("...and the error names the server, not the key",
+          "11434" in _r.get("error", "") or "injoignable" in _r.get("error", ""), _r)
+    _grq = _replace(cfg, backend="api", provider="groq", model="llama-3.3-70b")
+    _r = _ST.test_backend(_grq, timeout=5)
+    check("a keyless provider that needs one says so plainly",
+          "clé" in _r.get("error", ""), _r)
+    check("...and never mentions Anthropic for a non-Anthropic provider",
+          "anthropic" not in _r.get("error", "").lower(), _r)
+
     print("\n7c. settings written back into the TOML files")
     import settings as ST
     for name, path in ST.FILES.items():

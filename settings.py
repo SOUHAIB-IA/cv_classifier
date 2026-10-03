@@ -442,10 +442,19 @@ def test_backend(cfg, timeout: int = 90) -> dict:
                         "Claude Code n'est pas installé sur cette machine, ou pas "
                         "trouvé. Installe-le, ou passe à une clé API."}
             body = cr._ask_cli(cfg, system, "ping", timeout=timeout)
-        else:
+        elif cfg.provider == "anthropic":
             if not cfg.api_key:
                 return {"ok": False, "error": "aucune clé API enregistrée"}
             body = cr._ask_api(cfg, system, "ping", 64)
+        else:
+            # Every other provider speaks the OpenAI shape, and this branch used
+            # to send them through the Anthropic SDK: the Test button failed for
+            # Groq, Gemini and the rest whatever the key was. Ollama needs no key
+            # at all, and demanding one here made it untestable too.
+            info = cr.PROVIDERS.get(cfg.provider, {})
+            if not cfg.api_key and not info.get("no_key"):
+                return {"ok": False, "error": "aucune clé API enregistrée"}
+            body = cr._ask_compatible(cfg, system, "ping", 64)
     except cr.AIError as e:
         return {"ok": False, "error": str(e)[:300]}
     except Exception as e:                            # a key rejected by the API
