@@ -35,6 +35,7 @@ from pipeline import sources as SRC
 from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 import settings as ST
+import time
 import desktop
 import indexing
 import supervisor
@@ -415,6 +416,66 @@ def index_start(x_cv_router: str | None = Header(default=None)):
     if not ok:
         raise HTTPException(409 if indexing.INDEXER.running() else 400, message)
     return {"ok": True, "message": message, "status": indexing.INDEXER.status()}
+
+
+def _count_pdfs(d: Path, deadline: float, cap: int = 400) -> int:
+    """PDFs under a folder, bounded by a depth, a cap and a clock.
+
+    The indexer reads recursively, so the count has to as well, but this runs
+    while someone waits on a page: a home directory with a hundred thousand
+    files must not hold the request open.
+    """
+    n, root_depth = 0, len(d.parts)
+    try:
+        for cur, dirs, files in os.walk(d):
+            if time.monotonic() > deadline or n >= cap:
+                break
+            if len(Path(cur).parts) - root_depth >= 3:
+                dirs[:] = []
+            dirs[:] = [x for x in dirs
+                       if x not in ("_Not-a-CV", "_Duplicates-auto")
+                       and not x.startswith(".")]
+            n += sum(1 for f in files if f.lower().endswith(".pdf"))
+    except OSError:
+        return 0
+    return min(n, cap)
+
+
+@router.get("/api/folders")
+def folder_candidates():
+    """Where a person's CVs plausibly are, and how many PDFs each one holds.
+
+    Someone who is not a developer cannot be asked to type an absolute path.
+    The usual places are offered instead, and the count is what tells them
+    which one is theirs: the folder with eleven PDFs is the answer, the empty
+    one is not.
+    """
+    import cvrouter as cr
+
+    cfg = cr.load_config()
+    home = Path.home()
+    deadline = time.monotonic() + 2.0
+    # The well-known places first, so the folder in use keeps the name its
+    # owner knows it by. Labelling it "the chosen folder" renamed Downloads the
+    # moment it was picked, which made the row the reader had just clicked look
+    # like it had disappeared.
+    wanted = [(home / "Downloads", "Téléchargements"),
+              (home / "Téléchargements", "Téléchargements"),
+              (home / "Documents", "Documents"),
+              (home / "Desktop", "Bureau"),
+              (home / "Bureau", "Bureau"),
+              (cfg.cv_root, "Le dossier choisi"),
+              (home, "Ton dossier personnel")]
+    out, seen = [], set()
+    for d, label in wanted:
+        key = str(d)
+        if key in seen or not d.is_dir():
+            continue
+        seen.add(key)
+        out.append({"path": key, "label": label,
+                    "pdfs": _count_pdfs(d, deadline),
+                    "current": d == cfg.cv_root})
+    return {"folders": out, "current": str(cfg.cv_root)}
 
 
 @router.get("/api/setup")

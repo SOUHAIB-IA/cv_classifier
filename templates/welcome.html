@@ -39,10 +39,20 @@
       <span class="num" aria-hidden="true">2</span>
       <div class="body">
         <h2>Tes CV</h2>
-        <p>cv-router lit une fois le dossier que tu lui indiques, et en garde un
-          résumé. C'est ce qui lui permet de choisir ensuite.</p>
-        <div class="pathrow"><code>{{ cv_root }}</code>
-          <a class="btn small" href="/settings">Changer</a></div>
+        <p>Dis-lui où ils sont. Le nombre de PDF t'indique le bon dossier.
+          Ils ne quittent pas ta machine.</p>
+
+        {# Filled by welcome.js. Nobody can be asked to type an absolute path,
+           so the usual places are offered with their count instead. #}
+        <div class="folders" id="folders" role="radiogroup"
+             aria-label="Où sont tes CV">
+          <div class="fhelp" style="margin:0">Recherche des dossiers…</div>
+        </div>
+        <div class="pathrow">
+          <input id="f-other" placeholder="…ou colle le chemin d'un autre dossier"
+                 aria-label="Un autre dossier">
+          <button class="small" id="b-other">Utiliser</button>
+        </div>
         <div class="acts">
           <button class="primary" id="b-index">Lire mes CV</button>
           <span class="fhelp" style="margin:0" id="index-hint">Compte une à deux

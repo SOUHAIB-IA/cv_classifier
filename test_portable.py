@@ -557,6 +557,84 @@ def main() -> int:
         check("it says where to open it, before it exits",
               "open http://127.0.0.1" in (out or ""), (out or "")[:200])
 
+    # Settings filled and no CVs read is the state that used to drop someone on
+    # the analysis page with nothing to analyse. It needs its own config: this
+    # machine is fully set up, so the launcher is right to open / here.
+    with tempfile.TemporaryDirectory() as td:
+        sand = Path(td)
+        (sand / "cvs").mkdir()
+        text = (S.ROOT / "config.example.toml").read_text()
+        out_lines = []
+        for line in text.splitlines():
+            head = line.split("=")[0].strip()
+            if head == "cv_root":
+                line = f'cv_root    = "{(sand / "cvs").as_posix()}"'
+            elif head == "watch_dir":
+                line = f'watch_dir  = "{(sand / "cvs").as_posix()}"'
+            elif head == "index_file":
+                line = f'index_file = "{(sand / "none.json").as_posix()}"'
+            elif head == "owner_name":
+                line = 'owner_name     = "Ada"'
+            elif head == "provider":
+                line = 'provider   = "ollama"'
+            out_lines.append(line)
+        cfgp = sand / "config.toml"
+        cfgp.write_text("\n".join(out_lines))
+
+        import socket
+        with socket.socket() as sk:
+            sk.bind(("127.0.0.1", 0))
+            port = str(sk.getsockname()[1])
+        proc = subprocess.Popen(
+            [sys.executable, str(S.ROOT / "start.py"), "--config", str(cfgp),
+             "--no-browser", "--no-watcher", "--port", port],
+            cwd=str(S.ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True)
+        time.sleep(6)
+        proc.terminate()
+        try:
+            said = proc.communicate(timeout=10)[0] or ""
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            said = proc.communicate()[0] or ""
+        check("with settings done but no CVs, it opens the welcome page",
+              "/bienvenue" in said, said[-300:])
+        check("...and says why in the terminal",
+              "Aucun CV lu" in said, said[-300:])
+
+    print("\n6. where a stranger's CVs might be")
+    import webui as W
+
+    with tempfile.TemporaryDirectory() as td:
+        sand = Path(td)
+        (sand / "a").mkdir()
+        (sand / "a" / "deep").mkdir()
+        for name in ("un.pdf", "deux.pdf"):
+            (sand / name).write_bytes(b"%PDF-1.4\n")
+        (sand / "a" / "trois.pdf").write_bytes(b"%PDF-1.4\n")
+        (sand / "a" / "deep" / "quatre.pdf").write_bytes(b"%PDF-1.4\n")
+        (sand / "note.txt").write_text("not a pdf")
+        deadline = time.monotonic() + 5
+        check("it counts PDFs the way the indexer reads them, recursively",
+              W._count_pdfs(sand, deadline) == 4, W._count_pdfs(sand, deadline))
+        check("...and ignores everything that is not one",
+              W._count_pdfs(sand / "a" / "deep", deadline) == 1)
+        # A clock, not just a cap: a home directory with a hundred thousand
+        # files must not hold the page open while someone waits on it.
+        check("an expired budget stops the walk rather than finishing it",
+              W._count_pdfs(sand, time.monotonic() - 1) == 0)
+
+    folders = W.folder_candidates()
+    paths = [f["path"] for f in folders["folders"]]
+    check("the usual places are offered", len(paths) >= 2, paths)
+    check("...each one only once", len(paths) == len(set(paths)), paths)
+    check("...and exactly one is marked as the current one",
+          sum(1 for f in folders["folders"] if f["current"]) == 1)
+    check("a folder in use keeps the name its owner knows it by",
+          not (folders["folders"] and folders["folders"][0]["label"]
+               == "Le dossier choisi" and len(paths) > 1),
+          [f["label"] for f in folders["folders"]])
+
     print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
     return 0 if ok else 1
 

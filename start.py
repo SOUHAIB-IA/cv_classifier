@@ -190,6 +190,16 @@ def main(argv: list[str] | None = None) -> int:
     # desktop notification each time.
     todo = cr.setup_todo(cfg)
 
+    # Settings are only half of being ready. Someone who has filled in their
+    # name and key but has never read their CVs would land on the analysis page
+    # with nothing to analyse, which is where the product used to lose people.
+    # The welcome page holds them until there is something to work with.
+    try:
+        has_cvs = bool(cr.Index(cfg).records)
+    except Exception:
+        has_cvs = False
+    ready = not todo and has_cvs
+
     if todo:
         # This block is in French, alone in an English file, because it is the
         # one thing a first-time user reads and it sends them to a page that is
@@ -212,7 +222,11 @@ def main(argv: list[str] | None = None) -> int:
             # is a warning and not the end of the session.
             say(f"  note: the watcher did not start: {message}")
 
-    landing = url + ("/bienvenue" if todo else "")
+    if not todo and not has_cvs:
+        say("\n  Aucun CV lu pour l'instant. La page de bienvenue te demande "
+            "où ils sont et les lit en un clic.")
+
+    landing = url + ("" if ready else "/bienvenue")
     say(f"  open {landing}\n  Ctrl+C to stop")
 
     if not args.no_browser:
