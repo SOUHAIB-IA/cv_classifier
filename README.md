@@ -23,10 +23,11 @@ rewrites it for that ad, and hands you a finished application to send.
 An LLM reads the whole document — profile, skills, projects — so nothing turns
 on a filename or a stale job title at the top of the page.
 
-## Five pages
+## Six pages
 
 Everything is one local web app on <http://127.0.0.1:8770>. `Ctrl+K` searches
-every posting from any of them.
+every posting from any of them. A first run opens `/bienvenue` instead, which
+explains what the tool does and carries the three steps it needs from you.
 
 | | |
 |---|---|
@@ -92,10 +93,16 @@ Keyword rules get all four wrong. Reading the document gets them right.
 
 ## Requirements
 
-- Linux with `systemd --user` (tested on Ubuntu)
+- Linux, macOS or Windows. There is no service to install: `python start.py`
+  runs the watcher and the web app together in one process.
 - Python 3.11+
-- `pdftotext` — `sudo apt install poppler-utils`
-- `notify-send` for desktop notifications — `sudo apt install libnotify-bin`
+- **poppler** (`pdftotext`, `pdfinfo`), which reads your PDFs:
+  `sudo apt install poppler-utils`, `brew install poppler`, or the
+  [poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases)
+  build added to your PATH.
+- Desktop notifications work out of the box on all three: `notify-send` on
+  Linux (`sudo apt install libnotify-bin`), osascript on macOS, PowerShell on
+  Windows.
 - **Google Chrome or Chromium** — renders the tailored CV to PDF, and opens an
   employer's form when you ask it to. Playwright drives the Chrome you already
   have (`channel="chrome"`), so no browser is downloaded.
@@ -115,26 +122,21 @@ cd cv-router
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
 
-./.venv/bin/python indexer.py            # read your existing CVs
-./install.sh                             # install the services
+./.venv/bin/python start.py
 ```
 
-That installs three units: the watcher and the portal start immediately; the
-pipeline timer is installed but left off, because it fetches job boards and
-spends model calls. Turn it on when you mean to:
-
-```bash
-systemctl --user enable --now cv-router-pipeline.timer   # a cycle every 45 min
-```
-
-Then open <http://127.0.0.1:8770> and finish in **Réglages**.
+That is the whole installation. The first run writes its own settings files,
+opens the welcome page, and walks you through the three things it needs: your
+name, a model, and the folder your CVs are in. Reading the collection is a
+button on that page, not a command.
 
 ### Configure
 
-Open **Réglages** and set it there. Every field carries the sentence that
+Everything is set on the pages themselves. Each field carries the sentence that
 explains it, a value that would break the app is refused before it is written,
 and the files keep their comments because only the line that changed is
-rewritten.
+rewritten. The watcher rereads them when you save, so a setting takes effect
+without going back to the terminal.
 
 Two things are not in the UI, because they are yours and stay out of git:
 
@@ -375,9 +377,10 @@ sentence you need, which package to install, rather than as a traceback three
 minutes later.
 
 **The first run writes its own settings files** from the examples beside them,
-opens the Settings page, and does not start the watcher. It tells you what is
-still missing, which is your name and a model, and nothing is filed until both
-are set. That is deliberate: without a model the watcher can only fail, once
+opens `/bienvenue`, and does not start the watcher. That page explains what the
+tool does and gives the three steps it needs, each next to the button that
+settles it: your name and a model, reading your CVs, and a first job ad.
+Nothing is filed until the first two are done. That is deliberate: without a model the watcher can only fail, once
 per PDF in the folder it watches, and the first person to run this outside the
 machine it was written on watched exactly that happen.
 
@@ -470,10 +473,19 @@ touching a file.
 
 ## Day to day
 
+The watcher says whether it is running, and on which folder, in the panel at the
+top of **Réglages**, where you can also stop and restart it. The log is the same
+on every system:
+
+```bash
+tail -f data/cv-router.log
+```
+
+Installed as a systemd service with `install.sh`, it also answers to:
+
 ```bash
 systemctl --user status cv-router-watcher
 journalctl --user -u cv-router-watcher -f
-tail -f data/cv-router.log
 ```
 
 ## Architecture
@@ -562,12 +574,12 @@ If neither is acceptable for your documents, do not use this.
 
 ## Known limits
 
-**Windows: one suite fails.** `test_routing.py` fails on `windows-latest` and
-the cause is not understood; the CI job runs and reports it but does not block.
-Everything that answers the portability question is green there: no Unix-only
-import, the lock taken, contended, waited on and released through `LockFileEx`,
-Chrome found, and `start.py` serving every page. Linux and macOS are green
-throughout. Treat Windows as usable but unverified until that suite passes.
+**Windows passes, and nobody has used it there.** All four CI jobs are green,
+including `windows-latest`: no Unix-only import, the lock taken and released
+through `LockFileEx`, Chrome found, `start.py` serving every page, and every
+suite passing. What that does not prove is a day of real use on a real Windows
+desktop, which has not happened yet. poppler is also the one prerequisite
+Windows has no installer for: you download a build and put it on your PATH.
 
 
 - **A site that detects bots will refuse an assisted fill, and it is right to.**
@@ -588,8 +600,9 @@ throughout. Treat Windows as usable but unverified until that suite passes.
 - The watcher watches the top level of the download folder, not subfolders.
 - The web interface and the notification text are in French. Everything else —
   code, comments, config, prompts — is English.
-- Linux only. The daemon, the notifications and the installer all assume
-  `systemd --user` and D-Bus.
+- **The interface is desktop first.** Below roughly 700px the navigation bar
+  crushes rather than wrapping. It stays usable, it does not stay pretty, and
+  nothing here is meant to be driven from a phone.
 
 ## License and what you are responsible for
 
