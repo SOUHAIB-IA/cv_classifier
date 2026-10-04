@@ -68,11 +68,40 @@ def _index() -> cr.Index:
         return _index_cache["idx"]
 
 
+def _mark_first_analysis() -> None:
+    """Remember that one analysis has run, for the first-run strip.
+
+    A file rather than a setting: it records something that happened, it is
+    cheap to check on every page, and deleting it only makes the strip
+    reappear.
+    """
+    try:
+        marker = cfg.index_file.parent / "first-analysis.done"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    except OSError:
+        pass                                 # a strip is not worth an error
+
+
 def analyse(job_text: str) -> dict:
     # An empty ad would still cost two model calls for a meaningless answer.
     if len((job_text or "").strip()) < 40:
         raise ValueError("job description is empty or too short to match")
     return matcher.match_job(cfg, job_text, idx=_index())
+
+
+@app.get("/bienvenue", response_class=HTMLResponse)
+def welcome(request: Request):
+    """The guided first run.
+
+    A page rather than the strip, because a stranger needs the three steps
+    explained and each one next to the button that does it. The strip is the
+    reminder afterwards, not the explanation.
+    """
+    return templates.TemplateResponse(
+        request, "welcome.html",
+        {"here": "welcome", "cv_root": str(cfg.cv_root)},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -92,6 +121,7 @@ def match(request: Request, job: str = Form(...)):
            "cv_root": str(cfg.cv_root), "result": None, "error": None}
     try:
         ctx["result"] = analyse(job)
+        _mark_first_analysis()
     except ValueError as e:                 # bad input, not a failure
         ctx["error"] = str(e)
     except Exception as e:

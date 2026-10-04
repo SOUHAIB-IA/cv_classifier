@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -375,7 +376,103 @@ def main() -> int:
                 if isinstance(h, logging.FileHandler)]
         check("releasing the logs leaves no open log file behind", not left, left)
 
-    print("\n4e. the desktop, three ways")
+    print("\n4e. reading the CVs, from the page instead of a terminal")
+    import indexing as IX
+
+    ix = IX.Indexer()
+    check("before a launcher hands it the job, it says it is not in charge",
+          ix.status()["managed"] is False)
+    ok_i, msg_i = ix.start()
+    check("...and refuses to read a collection it was never given",
+          not ok_i, msg_i)
+
+    # The progress comes from parsing lines indexer.py already prints. If those
+    # lines change, the bar silently stops moving, so the patterns are pinned
+    # against the real format strings rather than against a copy of them.
+    src = (S.ROOT / "indexer.py").read_text()
+    check("the indexer still prints the total it is parsed for",
+          '"%d PDFs under %s"' in src)
+    check("...the split between unchanged and to index",
+          '"%d unchanged, %d to index%s"' in src)
+    check("...and the per-batch counter", '"  %d/%d…"' in src)
+    check("the total pattern matches a real line",
+          IX.RE_TOTAL.search("3 PDFs under /home/x/CVs").group(1) == "3")
+    check("the split pattern matches a real line",
+          IX.RE_SPLIT.search("12 unchanged, 5 to index with 4 worker(s)"
+                             ).groups() == ("12", "5"))
+    check("the step pattern matches a real line",
+          IX.RE_STEP.search("  7/5…") is not None)
+
+    # The one message a stranger is most likely to meet.
+    msg = (S.ROOT / "matcher.py").read_text()
+    check("the empty-index error speaks the language of the interface",
+          "Aucun CV n'a encore été lu" in msg)
+    check("...and no longer sends anyone to a terminal",
+          "python indexer.py" not in msg)
+
+    # No em dash in what a reader sees. Scoped to the files that are all
+    # interface: common.js is excluded because its noDash() has to contain the
+    # character it strips, matcher.py because its English system prompt tells
+    # the model not to use one, and data.js because the only hit is an English
+    # code comment. A blunter check would fail on the code that enforces this
+    # very rule.
+    for name in ("indexing.py", "static/portal.js", "templates/portal.html",
+                 "templates/welcome.html", "static/welcome.js"):
+        body = (S.ROOT / name).read_text()
+        check(f"no em dash in {name}", "\u2014" not in body)
+    new_fr = [l for l in (S.ROOT / "static/data.js").read_text().splitlines()
+              if "Aucune offre" in l]
+    check("the rewritten empty states carry none either",
+          new_fr and not any("\u2014" in l for l in new_fr), new_fr)
+
+    # The palette is allowed to change. What it may not do is stop being
+    # readable, so the thresholds are tested against app.css itself rather than
+    # against a copy of the colours written down here.
+    css = (S.ROOT / "static" / "app.css").read_text()
+
+    def tokens(block: str) -> dict:
+        return dict(re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{3,8})", block))
+
+    light_src = css.split("@media (prefers-color-scheme: dark)")[0]
+    dark_src = css.split("@media (prefers-color-scheme: dark)")[1][:1200]
+    light = tokens(light_src)
+    dark = {**light, **tokens(dark_src)}
+
+    def lum(h):
+        h = h.lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        ch = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        ch = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in ch]
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+
+    def ratio(a, b):
+        la, lb = lum(a), lum(b)
+        hi, lo = max(la, lb), min(la, lb)
+        return (hi + 0.05) / (lo + 0.05)
+
+    # (foreground, background, threshold). 4.5 for text, 3.0 for the boundary
+    # that identifies a control.
+    PAIRS = [("ink", "bg", 4.5), ("ink", "card", 4.5),
+             ("muted", "bg", 4.5), ("muted", "card", 4.5),
+             ("accent-ink", "accent", 4.5),
+             ("accent", "bg", 4.5), ("accent", "accent-soft", 4.5),
+             ("ok", "bg", 4.5), ("ok", "ok-soft", 4.5),
+             ("warn", "warn-soft", 4.5), ("bad", "bad-soft", 4.5),
+             ("info", "info-soft", 4.5),
+             ("line-strong", "bg", 3.0), ("line-strong", "card", 3.0)]
+    for theme, tk in (("light", light), ("dark", dark)):
+        worst = []
+        for fg, bg, need in PAIRS:
+            if fg not in tk or bg not in tk:
+                worst.append(f"{fg}/{bg} missing")
+                continue
+            got = ratio(tk[fg], tk[bg])
+            if got < need:
+                worst.append(f"{fg} on {bg} = {got:.2f}, needs {need}")
+        check(f"every {theme} pair in app.css is readable", not worst, worst)
+
+    print("\n4f. the desktop, three ways")
     import desktop as D
     check("this platform is one it knows",
           D.SYSTEM in ("Linux", "Windows", "Darwin"), D.SYSTEM)

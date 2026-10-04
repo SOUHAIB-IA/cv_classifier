@@ -179,6 +179,12 @@ def main(argv: list[str] | None = None) -> int:
 
     WATCHER.configure(cfg_path, dry_run=args.dry_run)
 
+    # The Read my CVs button runs indexer.py, and it must run it against the
+    # same configuration this process was started with.
+    import indexing
+
+    indexing.INDEXER.configure(cfg_path)
+
     # Everything still missing, as sentences. The watcher does not start while
     # this is non-empty: without a brain it can only fail, once per file, with a
     # desktop notification each time.
@@ -192,8 +198,8 @@ def main(argv: list[str] | None = None) -> int:
         say("\n  Pas encore configuré. Il manque :")
         for item in todo:
             say(f"    - {item}")
-        say("  La page Réglages s'ouvre là-dessus. Une fois rempli, le bouton "
-            "« Démarrer » y lance le classement, sans relancer cette commande.")
+        say("  La page de bienvenue s'ouvre là-dessus, et chaque étape y porte "
+            "le bouton qui la règle.")
     elif not args.no_watcher:
         # The supervisor creates the folders rather than complaining about
         # them: a folder that does not exist is a thing to make.
@@ -206,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
             # is a warning and not the end of the session.
             say(f"  note: the watcher did not start: {message}")
 
-    landing = url + ("/settings" if todo else "")
+    landing = url + ("/bienvenue" if todo else "")
     say(f"  open {landing}\n  Ctrl+C to stop")
 
     if not args.no_browser:

@@ -6,16 +6,10 @@
 <title>CV Router</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
-  :root{
-    --bg:#f6f6f4; --card:#fff; --ink:#1c1b19; --muted:#6b6862;
-    --line:#e2e0da; --accent:#3d5a3d; --accent-soft:#eef3ee;
-    --warn:#8a5a1f; --warn-soft:#fdf4e6; --bad:#8a2f2f; --bad-soft:#fbeeee;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{ --bg:#16171a; --card:#1e2024; --ink:#e9e7e3; --muted:#9b978f;
-           --line:#2f3238; --accent:#8fbf8f; --accent-soft:#1f2a1f;
-           --warn:#d9a441; --warn-soft:#2a2316; --bad:#e08585; --bad-soft:#2a1a1a; }
-  }
+  /* No :root here. This page used to redefine every colour while also loading
+     app.css, and the two copies had already drifted apart: --bg was #f6f6f4
+     against #f5f5f2, --line #e2e0da against #e3e1db. The page every reader
+     lands on was the one page outside its own design system. */
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -69,20 +63,58 @@
 <body>
 {% include "_nav.html" with context %}
 <div class="wrap">
+{% if n_cvs == 0 %}
+  {# The setup step. The job ad box is absent on purpose: with an empty index
+     matcher.py raises before any model call, so showing the field would be
+     offering a button that cannot work. #}
+  <h1>Commençons par tes CV</h1>
+  <div class="sub">cv-router choisit le bon CV pour chaque annonce. Il doit
+    d'abord lire ceux que tu as déjà.</div>
+
+  <div class="card">
+    <h2>Le dossier de tes CV</h2>
+    <div class="fhelp">Tous les PDF qui s'y trouvent seront lus et résumés.
+      Ils ne quittent pas ta machine.</div>
+    <div class="pathrow">
+      <code>{{ cv_root }}</code>
+      <a class="btn small" href="/settings">Changer</a>
+    </div>
+    <div class="acts">
+      <button class="primary" id="b-index">Lire mes CV</button>
+      <span class="fhelp" style="margin:0" id="index-hint">Compte une à deux
+        minutes pour une vingtaine de CV.</span>
+    </div>
+
+    {# role=status with aria-live, so the count is announced and not only drawn. #}
+    <div class="progress" id="index-progress" hidden role="status" aria-live="polite">
+      <div class="bar"><i id="index-bar" style="width:0%"></i></div>
+      <div class="line"><span id="index-count"></span><span id="index-note"></span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Et si je n'ai qu'un seul CV ?</h2>
+    <p style="margin:0">Ça marche aussi. cv-router le lira, et il te dira quoi
+      changer dedans pour chaque annonce, au lieu de choisir parmi plusieurs.</p>
+  </div>
+
+{% else %}
   <div style="display:flex;align-items:baseline;gap:16px">
     <h1 style="flex:1">Analyser une offre</h1>
   </div>
-  <div class="sub">{{ n_cvs }} CV indexés : {{ cv_root }}</div>
+  <div class="sub">{{ n_cvs }} CV lus. Colle une annonce, tu reçois le CV à
+    envoyer et ce qu'il faut y changer.</div>
 
-  <form method="post" class="card" onsubmit="this.q.disabled=true;this.q.textContent='Analyse en cours…'">
+  <form method="post" class="card" onsubmit="this.q.disabled=true;this.q.setAttribute('aria-busy','true')">
     <h2>Description du poste</h2>
-    <textarea name="job" placeholder="Collez ici l'annonce complète…">{{ job }}</textarea>
-    <button name="q" type="submit">Trouver le meilleur CV</button>
-    <div class="hint">Deux appels modèle : présélection sur l'index, puis lecture
-      intégrale des 5 meilleurs candidats.</div>
+    <textarea name="job" placeholder="Colle ici l'annonce complète…">{{ job }}</textarea>
+    <button class="primary" name="q" type="submit">Trouver le meilleur CV</button>
+    <div class="hint">Le CV est choisi parmi les tiens, puis relu en entier.
+      Compte une trentaine de secondes.</div>
   </form>
+{% endif %}
 
-  {% if error %}<div class="err"><b>Erreur :</b> {{ error }}</div>{% endif %}
+  {% if error %}<div class="err" role="alert"><b>Erreur :</b> {{ error }}</div>{% endif %}
 
   {% if result %}
     {% set r = result %}
@@ -156,6 +188,8 @@
     </div>
   {% endif %}
 </div>
+<div class="toast" id="toast"></div>
 <script src="/static/common.js"></script>
+<script src="/static/portal.js"></script>
 </body>
 </html>

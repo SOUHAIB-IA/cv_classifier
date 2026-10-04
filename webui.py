@@ -36,6 +36,7 @@ from pipeline import tracker as TR
 from pipeline.db import DB, STATUSES
 import settings as ST
 import desktop
+import indexing
 import supervisor
 
 HERE = Path(__file__).resolve().parent
@@ -397,6 +398,52 @@ def settings_restart(x_cv_router: str | None = Header(default=None)):
     if not ok:
         raise HTTPException(400, message)
     return {"ok": True, "message": message}
+
+
+@router.get("/api/index")
+def index_status():
+    """How the CV reading is going. Read-only and safe before anything starts."""
+    return indexing.INDEXER.status()
+
+
+@router.post("/api/index/start")
+def index_start(x_cv_router: str | None = Header(default=None)):
+    """Read the CV collection. The first mandatory action of this product, and
+    until now the only one that had no button."""
+    _guard(x_cv_router)
+    ok, message = indexing.INDEXER.start()
+    if not ok:
+        raise HTTPException(409 if indexing.INDEXER.running() else 400, message)
+    return {"ok": True, "message": message, "status": indexing.INDEXER.status()}
+
+
+@router.get("/api/setup")
+def setup_state():
+    """The three steps of a first run, for the strip every page shows.
+
+    Derived from what already exists rather than from a stored wizard: a step
+    is done because the thing itself is done, so the strip cannot claim
+    progress that was undone behind it.
+    """
+    import cvrouter as cr
+
+    cfg = cr.load_config()
+    idx = cr.Index(cfg)
+    steps = [
+        {"label": "Tes réglages", "done": not cr.setup_todo(cfg)},
+        {"label": "Tes CV", "done": bool(idx.records)},
+        {"label": "Ta première annonce", "done": _first_analysis_done(cfg)},
+    ]
+    for s in steps:                      # the first unfinished one is "now"
+        s["current"] = False
+    nxt = next((s for s in steps if not s["done"]), None)
+    if nxt:
+        nxt["current"] = True
+    return {"steps": steps, "complete": all(s["done"] for s in steps)}
+
+
+def _first_analysis_done(cfg) -> bool:
+    return (cfg.index_file.parent / "first-analysis.done").is_file()
 
 
 @router.get("/api/watcher")

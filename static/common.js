@@ -139,3 +139,34 @@ function ago(ts) {
     if (e.target.closest("#open-search")) open();
   });
 })();
+
+// ------------------------------------------------------- the first run ----
+// Three steps, on every page, until they are all done. A strip and not a tour:
+// it never takes the screen, and it carries its own way out. A forced linear
+// walkthrough is the anti-pattern, so Masquer is part of the design.
+const STRIP_OFF = "cvrouter.strip.hidden";
+
+async function runStrip() {
+  const nav = document.querySelector("nav.top");
+  if (!nav || localStorage.getItem(STRIP_OFF) === "1") return;
+  let s;
+  try { s = await api("/api/setup"); } catch (e) { return; }
+  if (!s || s.complete) return;
+
+  const el = document.createElement("div");
+  el.className = "runstrip";
+  el.setAttribute("aria-label", "Mise en route");
+  el.innerHTML = s.steps.map(st =>
+    `<span class="step ${st.done ? "done" : (st.current ? "now" : "")}">
+       <span class="dot" aria-hidden="true"></span>${esc(st.label)}</span>`
+  ).join("") + `<span class="sp"></span>
+    <a class="btn small" href="/bienvenue">Reprendre</a>
+    <button class="small" id="b-hide-strip">Masquer</button>`;
+  nav.insertAdjacentElement("afterend", el);
+  el.querySelector("#b-hide-strip").onclick = () => {
+    try { localStorage.setItem(STRIP_OFF, "1"); } catch (e) { /* private mode */ }
+    el.remove();
+  };
+}
+
+runStrip();

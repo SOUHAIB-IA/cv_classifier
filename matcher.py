@@ -103,7 +103,12 @@ def match_job(cfg: cr.Config, jd_text: str, *, title: str = "", company: str = "
     """
     idx = idx or cr.Index(cfg)
     if not idx.records:
-        raise cr.AIError("Index is empty — run: python indexer.py")
+        # French, alone among this file's messages, because this one is read by
+        # a person on the home page rather than by whoever reads the log. It was
+        # the product's answer to "what do I do now", in English, pointing at a
+        # terminal, and it is the first thing a stranger hits.
+        raise cr.AIError("Aucun CV n'a encore été lu. Ouvre la page d'accueil "
+                         "et clique sur « Lire mes CV ».")
     text_of = text_of or (lambda rel: cr.pdf_text_cached(cfg, cfg.cv_root / rel))
 
     header = "\n".join(x for x in (

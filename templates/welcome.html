@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bienvenue · CV Router</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{% include "_nav.html" with context %}
+<main>
+  <h1>Bienvenue</h1>
+  <div class="sub">Trois choses à faire une fois, et tu n'y reviens plus.</div>
+
+  <div class="card wcard">
+    <h2>Ce que fait cv-router</h2>
+    <p class="wlead">Tu lui donnes une annonce. Il choisit, parmi les CV que tu
+      as déjà, celui qui correspond le mieux, puis il te dit précisément quoi y
+      changer pour cette annonce. Tes CV restent sur ta machine.</p>
+  </div>
+
+  {# The steps carry their own action. A checklist that only names what is
+     missing sends the reader hunting for the place to fix it. #}
+  <ol class="steps-big">
+    <li class="wstep" id="w1">
+      <span class="num" aria-hidden="true">1</span>
+      <div class="body">
+        <h2>Ton nom et ton modèle</h2>
+        <p>Ton nom sert à reconnaître tes CV parmi d'autres. Le modèle fait le
+          travail de lecture, avec ta clé ou ton abonnement.</p>
+        <div class="acts">
+          <a class="btn primary" href="/settings">Ouvrir les réglages</a>
+          <span class="state" id="w1state"></span>
+        </div>
+      </div>
+    </li>
+
+    <li class="wstep" id="w2">
+      <span class="num" aria-hidden="true">2</span>
+      <div class="body">
+        <h2>Tes CV</h2>
+        <p>cv-router lit une fois le dossier que tu lui indiques, et en garde un
+          résumé. C'est ce qui lui permet de choisir ensuite.</p>
+        <div class="pathrow"><code>{{ cv_root }}</code>
+          <a class="btn small" href="/settings">Changer</a></div>
+        <div class="acts">
+          <button class="primary" id="b-index">Lire mes CV</button>
+          <span class="fhelp" style="margin:0" id="index-hint">Compte une à deux
+            minutes pour une vingtaine de CV.</span>
+        </div>
+        <div class="progress" id="index-progress" hidden role="status" aria-live="polite">
+          <div class="bar"><i id="index-bar" style="width:0%"></i></div>
+          <div class="line"><span id="index-count"></span><span id="index-note"></span></div>
+        </div>
+        <div class="state" id="w2state"></div>
+      </div>
+    </li>
+
+    <li class="wstep" id="w3">
+      <span class="num" aria-hidden="true">3</span>
+      <div class="body">
+        <h2>Ta première annonce</h2>
+        <p>Colle une offre complète. Tu reçois le CV à envoyer, un score, et la
+          liste de ce qu'il faut changer.</p>
+        <div class="acts">
+          <a class="btn primary" href="/">Analyser une annonce</a>
+          <span class="state" id="w3state"></span>
+        </div>
+      </div>
+    </li>
+  </ol>
+
+  <p class="fhelp"><a href="/">Passer cette page</a> et aller directement à
+    l'analyse.</p>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script src="/static/portal.js"></script>
+<script src="/static/welcome.js"></script>
+</body>
+</html>

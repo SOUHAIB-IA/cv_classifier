@@ -101,9 +101,18 @@ async function load() {
   head();
   document.getElementById("count").textContent =
     d.total ? `${d.total.toLocaleString("fr")} offre${d.total > 1 ? "s" : ""}` : "Aucune offre";
+  // Two sentences, not one. Nothing matching a filter and nothing existing at
+  // all are different situations, and the old single sentence blamed the reader
+  // for a filter they had never set.
+  const filtered = ["q", "stage", "status", "source", "fit_min", "has_app",
+                    "apply_kind"].some(k => state[k] !== "" && state[k] != null);
+  const nothing = filtered
+    ? "Aucune offre ne correspond à ces filtres."
+    : "Aucune offre pour l'instant. Le pipeline en collecte quand tu le "
+      + "démarres, dans l'onglet Pipeline.";
   document.getElementById("rows").innerHTML = d.rows.map(r =>
     `<tr>${COLS.map(c => `<td>${cell(r, c.k)}</td>`).join("")}</tr>`).join("")
-    || `<tr><td colspan="${COLS.length}" class="empty">Rien ne correspond à ces filtres.</td></tr>`;
+    || `<tr><td colspan="${COLS.length}" class="empty">${nothing}</td></tr>`;
 
   document.getElementById("pginfo").textContent = `page ${d.page} sur ${d.pages}`;
   document.getElementById("pg-first").disabled = d.page <= 1;
