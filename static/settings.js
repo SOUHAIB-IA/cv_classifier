@@ -86,7 +86,7 @@ function field(f) {
       <input class="tagin" placeholder="ajouter, puis Entrée" data-add="${esc(f.id)}">
     </div>`;
   } else {
-    body = `<input value="${esc(v)}" data-id="${esc(f.id)}" data-kind="text">`;
+    body = `<input${/^behaviour\.owner_/.test(f.id) ? ' class="short"' : ""} value="${esc(v)}" data-id="${esc(f.id)}" data-kind="text">`;
   }
 
   return `<div class="set ${changed ? "edited" : ""}">

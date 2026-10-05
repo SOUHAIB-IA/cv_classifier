@@ -15,7 +15,7 @@ import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -50,6 +50,14 @@ class _Revalidating(StaticFiles):
 
 
 app.mount("/static", _Revalidating(directory=str(HERE / "static")), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browsers ask for this at the root whatever the page says; without it
+    every page load logged a 404 in the console."""
+    return FileResponse(HERE / "static" / "favicon.ico", media_type="image/x-icon",
+                        headers={"Cache-Control": "no-cache"})
+
 
 _index_cache: dict = {"mtime": None, "idx": None}
 _index_lock = threading.Lock()
