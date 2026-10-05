@@ -143,9 +143,7 @@ function watcherPanel() {
   if (!w.managed) {
     return `<div class="set">
       <div class="slab">La surveillance</div>
-      <div class="fhelp">Cette application ne la pilote pas : elle a été lancée autrement
-        qu'avec <code>python start.py</code>. Tes réglages sont bien enregistrés, mais
-        c'est au programme qui tient la surveillance de les relire.</div>
+      <div class="fhelp">Cette application ne la pilote pas : elle a été lancée par un autre programme, qui est le seul à pouvoir la relire. Tes réglages sont bien enregistrés.</div>
     </div>`;
   }
   const todo = w.todo || [];

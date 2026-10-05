@@ -35,9 +35,9 @@
         <div class="how">
           <ol>
             <li>Le pipeline <b>collecte</b> les offres des entreprises suivies, toutes les 45 minutes.</li>
-            <li>Un <b>pré-filtre gratuit</b> écarte ce qui ne correspond pas : intitulé, lieu, années demandées, autorisation de travail.</li>
-            <li>cv-router <b>évalue</b> les meilleures : il choisit ton CV le plus adapté, donne un score de fit et un score ATS, et liste les modifications à faire.</li>
-            <li>Pour un fit élevé, le CV est <b>adapté automatiquement</b>, puis il t'attend en brouillon.</li>
+            <li>Un <b>tri gratuit</b> écarte ce qui ne correspond pas : intitulé, lieu, années demandées, autorisation de travail.</li>
+            <li>cv-router <b>évalue</b> les meilleures : il choisit ton CV le plus adapté, donne un score de correspondance et un score ATS, et liste les modifications à faire.</li>
+            <li>Pour une correspondance élevée, le CV est <b>adapté automatiquement</b>, puis il t'attend en brouillon.</li>
             <li>Tu le <b>relis, modifies, valides</b>.</li>
             <li>Le formulaire est <b>rempli</b> : par défaut tu cliques sur Envoyer, et si tu actives l'envoi automatique le système envoie lui-même <b>quand il n'a rien eu à inventer</b>.</li>
           </ol>
@@ -49,7 +49,7 @@
     <div class="grid g3" style="margin-top:16px">
       <div class="card" id="q-draft-card"><h2>CV à relire <span class="tag draft" id="n-draft">0</span></h2><div class="list" id="q-draft" style="scroll-margin-top:80px"></div></div>
       <div class="card"><h2>Prêtes à soumettre <span class="tag staged" id="n-staged">0</span></h2><div class="list" id="q-staged" style="scroll-margin-top:80px"></div></div>
-      <div class="card"><h2>En revue (fit moyen) <span class="tag review" id="n-review">0</span></h2><div class="list" id="q-review" style="scroll-margin-top:80px"></div></div>
+      <div class="card"><h2>En revue (correspondance moyenne) <span class="tag review" id="n-review">0</span></h2><div class="list" id="q-review" style="scroll-margin-top:80px"></div></div>
     </div>
   </section>
 
@@ -103,8 +103,7 @@
       <div id="auto-head"></div>
       <div class="how" style="margin-top:10px">
         <p>La règle : <b>le système n'envoie que s'il n'a rien eu à inventer.</b> Chaque champ obligatoire
-        doit avoir été rempli depuis ton CV, ton identité, ou une réponse que tu as écrite toi-même dans
-        <code>profile.toml</code>. Une seule question sans réponse, un CAPTCHA, un bouton d'envoi ambigu,
+        doit avoir été rempli depuis ton CV, ton identité, ou une réponse que tu as écrite toi-même. Une seule question sans réponse, un CAPTCHA, un bouton d'envoi ambigu,
         et il s'arrête et te laisse le formulaire ouvert, déjà rempli.</p>
       </div>
     </div>
@@ -112,7 +111,7 @@
     <div class="card" style="margin-top:16px">
       <h2>Candidatures éligibles</h2>
       <div class="sub">Ce qui partirait sans toi, et ce qui retient les autres.</div>
-      <div class="scroll" style="margin-top:8px"><table><thead><tr><th>Fit</th><th>ATS</th><th>Offre</th><th>État</th><th></th></tr></thead>
+      <div class="scroll" style="margin-top:8px"><table><thead><tr><th>Correspondance</th><th>ATS</th><th>Offre</th><th>État</th><th></th></tr></thead>
       <tbody id="auto-rows"></tbody></table></div>
     </div>
   </section>
@@ -156,13 +155,13 @@
     <div class="grid g2" style="margin-top:16px">
       <div class="card">
         <h2>Décisions récentes</h2>
-        <div class="scroll"><table><thead><tr><th>Fit</th><th>ATS</th><th>Offre</th><th>Statut</th></tr></thead>
+        <div class="scroll"><table><thead><tr><th>Correspondance</th><th>ATS</th><th>Offre</th><th>Statut</th></tr></thead>
         <tbody id="recent"></tbody></table></div>
       </div>
       <div class="card">
         <h2>Candidates en attente d'évaluation</h2>
-        <div class="sub">Passées par le pré-filtre gratuit, classées par score. Les premières seront évaluées au prochain cycle.</div>
-        <div class="scroll" style="margin-top:8px"><table><thead><tr><th>Pré-filtre</th><th>Offre</th><th></th></tr></thead>
+        <div class="sub">Passées par le tri gratuit, classées par score. Les premières seront évaluées au prochain cycle.</div>
+        <div class="scroll" style="margin-top:8px"><table><thead><tr><th>Tri gratuit</th><th>Offre</th><th></th></tr></thead>
         <tbody id="cands"></tbody></table></div>
       </div>
     </div>

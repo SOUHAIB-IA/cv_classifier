@@ -57,9 +57,12 @@ function renderChanges(c) {
   return h;
 }
 
+// the .cv.json and .changelog.txt beside each CV are working files, not something to send
+const shown = name => /\.(pdf|docx)$/i.test(name);
+
 function renderFiles(files) {
   return card("Fichiers", `<div style="display:flex;gap:8px;flex-wrap:wrap">${
-    files.map(f => `<a class="btn" href="/canada/api/file/${encodeURIComponent(f)}"
+    files.filter(shown).map(f => `<a class="btn" href="/canada/api/file/${encodeURIComponent(f)}"
       download>${esc(f)}</a>`).join("")}</div>`);
 }
 
@@ -117,8 +120,8 @@ async function list() {
   try {
     const d = await api("/canada/api/output");
     $("c-dir").textContent = d.dir || "";
-    $("c-list").innerHTML = d.files.length
-      ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${d.files.map(f =>
+    $("c-list").innerHTML = d.files.filter(f => shown(f.name)).length
+      ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${d.files.filter(f => shown(f.name)).map(f =>
           `<a class="btn" href="/canada/api/file/${encodeURIComponent(f.name)}"
             download>${esc(f.name)}</a>`).join("")}</div>`
       : `<div class="empty">Rien encore.</div>`;
@@ -128,19 +131,46 @@ async function list() {
 $("c-run").onclick = run;
 $("c-lint").onclick = lint;
 
+const WORDS = { 1: "une", 2: "deux", 3: "trois" };
+const LOCATION_FR = {
+  city_province: "la ville et la province sont indiquées, pas l'adresse",
+  city_country: "la ville et le pays sont indiqués, pas l'adresse",
+  full_address: "l'adresse complète est indiquée",
+  omit: "aucun lieu n'est indiqué",
+};
+const AUTH_FR = {
+  omit: "ton autorisation de travail n'est pas mentionnée",
+  one_line: "ton autorisation de travail est mentionnée en une ligne",
+  relocation_note: "ta disponibilité pour déménager est mentionnée",
+};
+const CREDENTIAL_FR = {
+  none: "ton diplôme est présenté sans équivalence",
+  equivalence_line: "ton diplôme est suivi d'une ligne d'équivalence",
+  eca_reference: "ton diplôme cite une évaluation officielle",
+};
+
+// What the rules file says, in a sentence; the keys themselves are the maintainer's
+function stateLine(s) {
+  const credential = s.credential_mode === "equivalence_line" && !s.equivalence_set
+    ? "ton diplôme n'a pas d'équivalence renseignée"
+    : CREDENTIAL_FR[s.credential_mode] || s.credential_mode;
+  const p = n => WORDS[n] || n;
+  return [
+    s.paper === "letter" ? "Format lettre US" : `Format ${String(s.paper).toUpperCase()}`,
+    `${p(s.pages.prefer)} page${s.pages.prefer > 1 ? "s" : ""} de préférence, ${p(s.pages.max)} au maximum`,
+    LOCATION_FR[s.location_mode] || s.location_mode,
+    AUTH_FR[s.auth_mode] || s.auth_mode,
+    credential,
+  ].map(esc).join(" · ");
+}
+
 (async () => {
   try {
     STATE = await api("/canada/api/state");
     $("c-role").innerHTML = `<option value="">détecté depuis l'offre</option>` +
       Object.entries(STATE.roles).map(([k, v]) =>
         `<option value="${esc(k)}">${esc(v)}</option>`).join("");
-    $("c-state").innerHTML =
-      `papier <b>${esc(STATE.paper)}</b> · ${STATE.pages.prefer} page préférée,
-       ${STATE.pages.max} au maximum · lieu <b>${esc(STATE.location_mode)}</b>
-       · autorisation de travail <b>${esc(STATE.auth_mode)}</b>
-       · diplôme <b>${esc(STATE.credential_mode)}</b>${
-         STATE.credential_mode === "equivalence_line" && !STATE.equivalence_set
-           ? ` <span class="tag draft">équivalence non renseignée</span>` : ""}`;
+    $("c-state").innerHTML = stateLine(STATE);
   } catch (e) { $("c-state").textContent = "Erreur : " + e.message; }
   list();
 })();

@@ -8,9 +8,9 @@ const COLS = [
   { k: "company", t: "Entreprise", sort: "company" },
   { k: "title", t: "Intitulé", sort: "title" },
   { k: "location", t: "Lieu" },
-  { k: "fit_score", t: "Fit", sort: "fit" },
+  { k: "fit_score", t: "Correspondance", sort: "fit" },
   { k: "ats_score", t: "ATS", sort: "ats" },
-  { k: "prefilter_score", t: "Pré-filtre", sort: "prefilter" },
+  { k: "prefilter_score", t: "Tri gratuit", sort: "prefilter" },
   { k: "apply_kind", t: "Candidature" },
   { k: "questions_left", t: "Questions" },
   { k: "stage", t: "Étape" },
@@ -85,7 +85,7 @@ function cell(r, k) {
   // become a column three hundred pixels tall
   if (k === "location")
     return `<span class="sub clamp" title="${esc(r.location || "")}">${esc(r.location || "")}</span>`;
-  if (k === "source") return `<span class="sub">${esc(r.source || "")}</span>`;
+  if (k === "source") return `<span class="sub">${esc(SOURCE_FR[r.source] || r.source || "")}</span>`;
   const v = r[k];
   return v == null || v === "" ? '<span class="sub">–</span>' : esc(String(v).slice(0, 10));
 }
@@ -121,15 +121,15 @@ async function load() {
 
   // facets are filled once; refilling them on every load would reset a choice
   if (!document.getElementById("f-stage").options.length) {
-    const fill = (id, items, label) => {
+    const fill = (id, items, label, names = STATUS_FR) => {
       document.getElementById(id).innerHTML = `<option value="">${label}</option>` +
         items.filter(x => x.v).map(x =>
-          `<option value="${esc(x.v)}">${esc(STATUS_FR[x.v] || x.v)} (${x.n})</option>`).join("");
+          `<option value="${esc(x.v)}">${esc(names[x.v] || x.v)} (${x.n})</option>`).join("");
       document.getElementById(id).value = state[id.slice(2)] || "";
     };
     fill("f-stage", d.facets.stage, "toutes");
     fill("f-status", d.facets.status, "tous");
-    fill("f-source", d.facets.source, "toutes");
+    fill("f-source", d.facets.source, "toutes", SOURCE_FR);
     document.getElementById("f-apply").innerHTML =
       `<option value="">toutes</option>` + (d.facets.apply_kind || []).filter(x => x.v)
         .map(x => `<option value="${esc(x.v)}">${esc(APPLY_FR[x.v] || x.v)} (${x.n})</option>`).join("");

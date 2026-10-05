@@ -137,7 +137,7 @@ function renderHead() {
       <div id="prefill"></div>
     </div>
     <div class="scores">
-      <div class="score"><b class="fit ${fitClass(m?.fit_score, TH)}">${m?.fit_score ?? "–"}</b><span>fit</span></div>
+      <div class="score"><b class="fit ${fitClass(m?.fit_score, TH)}">${m?.fit_score ?? "–"}</b><span>correspondance</span></div>
       <div class="score"><b>${m?.ats_score ?? "–"}</b><span>ATS</span></div>
     </div>`;
 }

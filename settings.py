@@ -203,7 +203,7 @@ GROUPS: list[tuple[str, str, list[Field]]] = [
               "est lu comme du spam par les plateformes, et c'est toi qui es "
               "signalé. Les mieux notées sont gardées. 0 = pas de plafond.",
               min=0, max=20),
-        Field("prefilter.min_score", "pipeline", "Score de pré-filtre minimum", "number",
+        Field("prefilter.min_score", "pipeline", "Score du tri gratuit minimum", "number",
               "Avant tout appel au modèle, chaque offre reçoit un score gratuit selon "
               "les compétences qu'elle partage avec tes CV. En dessous, elle est "
               "écartée sans coûter d'appel. 0 laisse tout passer et fait dépenser "

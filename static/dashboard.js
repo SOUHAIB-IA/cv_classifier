@@ -23,7 +23,7 @@ function evText(e) {
   const d = e.detail || {};
   switch (e.kind) {
     case "source": return `${d.board || "manuel"} : ${d.fetched ?? ""} offres, ${d.new ?? 0} nouvelles${d.error ? " : " + d.error : ""}`;
-    case "match": return `envoyée à cv-router (pré-filtre ${d.prefilter ?? "–"})`;
+    case "match": return `envoyée à cv-router (tri gratuit ${d.prefilter ?? "–"})`;
     case "route": return `décision <b>${d.decision}</b> · fit ${d.fit} · ATS ${d.ats}`;
     case "tailor": return d.edited_by_hand ? `CV modifié à la main · ${d.pages} page(s)`
                  : `CV adapté · ${d.applied ?? "?"} modifs appliquées, ${d.refused ?? 0} refusées`;
@@ -66,7 +66,7 @@ async function loadCharts() {
   lazy.charts = Date.now();
 
   const f = window._funnel || {};
-  const stats = [["sourced", "offres collectées"], ["candidates", "passées au pré-filtre"],
+  const stats = [["sourced", "offres collectées"], ["candidates", "passées au tri gratuit"],
                  ["evaluated by model", "évaluées par cv-router"], ["auto", "fit ≥ " + TH.auto],
                  ["review", "revue"], ["applied", "envoyées"]];
   document.getElementById("funnel").innerHTML = stats.map(([k, l]) =>
@@ -111,7 +111,7 @@ async function loadCharts() {
   const order = [">=70", "40-69", "<40", "pre-screen"];
   document.getElementById("buckets").innerHTML = order.filter(b => agg[b]).map(b => {
     const a = agg[b];
-    return `<tr><td>${b === "pre-screen" ? "pré-filtre" : "fit " + b}</td>
+    return `<tr><td>${b === "pre-screen" ? "tri gratuit" : "fit " + b}</td>
       <td>${a.applied}</td><td>${a.responses}</td><td>${a.interviews}</td>
       <td>${a.applied ? Math.round(a.responses / a.applied * 100) + " %" : "–"}</td></tr>`;
   }).join("") || `<tr><td colspan="5" class="empty">Pas encore assez de candidatures envoyées.</td></tr>`;
@@ -131,11 +131,11 @@ async function loadAuto() {
             ? "Chaque vérification est faite jusqu'au bout, puis le système s'arrête avant le clic. Rien ne part."
             : "Les candidatures qui passent toutes les vérifications partent sans te demander."}</div>
          <div class="gate">
-           <div class="ok"><span class="m">✓</span>Fit minimum ${a.min_fit}, ATS minimum ${a.min_ats}</div>
+           <div class="ok"><span class="m">✓</span>${a.min_fit || a.min_ats ? `Correspondance minimum ${a.min_fit}, ATS minimum ${a.min_ats}` : "Aucun seuil : tout passe la barre pour l'instant"}</div>
            <div class="${a.sent_today < a.max_per_day ? "ok" : "no"}"><span class="m">${a.sent_today < a.max_per_day ? "✓" : "✕"}</span>
              Plafond du jour : ${a.sent_today} / ${a.max_per_day} envoyées</div>
            <div class="${a.answers ? "ok" : "no"}"><span class="m">${a.answers ? "✓" : "✕"}</span>
-             ${a.answers ? `${a.answers} réponses écrites par toi dans profile.toml`
+             ${a.answers ? `${a.answers} réponses que tu as déjà écrites`
                          : "Aucune réponse dans profile.toml : ajoute une section [[answers]], sinon rien ne pourra partir seul"}</div>
          </div>
        </div>`
@@ -180,7 +180,7 @@ async function refresh() {
   const last = auto.enabled ? "auto ou toi" : "toi";
   const flow = [
     { n: f["sourced"] ?? 0, nm: "Collectées", by: "auto" },
-    { n: f["candidates"] ?? 0, nm: "Retenues au pré-filtre", by: "auto" },
+    { n: f["candidates"] ?? 0, nm: "Retenues au tri gratuit", by: "auto" },
     { n: f["evaluated by model"] ?? 0, nm: "Évaluées par cv-router", by: "auto" },
     { n: L.review.length, nm: "À trancher", by: "toi", you: true },
     { n: L.draft.length + L.pending.length, nm: "CV à relire", by: "toi", you: true },
@@ -199,7 +199,7 @@ async function refresh() {
     { n: L.staged.length, t: "Candidatures à envoyer",
       s: "Le formulaire est rempli ; il ne reste qu'à envoyer.", href: "#q-staged" },
     { n: L.review.length, t: "Offres à trancher",
-      s: "Fit moyen : à toi de dire si ça vaut le coup.", href: "#q-review" },
+      s: "Correspondance moyenne : à toi de dire si ça vaut le coup.", href: "#q-review" },
   ].filter(x => x.n);
   document.getElementById("t-today").textContent = todo.reduce((a, x) => a + x.n, 0);
   document.getElementById("todo").innerHTML = todo.length ? todo.map(x =>

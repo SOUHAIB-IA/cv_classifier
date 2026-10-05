@@ -125,10 +125,11 @@
     </div>
 
     <div class="card">
-      <h2>Score ATS estimé</h2>
+      <h2>Lisibilité par les logiciels de tri</h2>
       <div class="score"><b>{{ r.ats_score }}</b><span style="color:var(--muted)">/ 100</span></div>
       <div class="bar"><i style="width:{{ r.ats_score }}%"></i></div>
       <div class="foot">{{ r.score_reason }}</div>
+      <div class="foot">Les employeurs trient souvent les CV avec un logiciel avant qu'un humain les lise. Ce score estime si le tien passe bien ce tri.</div>
     </div>
 
     <div class="card">
@@ -149,7 +150,7 @@
       {% for c in r.key_changes %}
         <div class="chg">
           <div class="hd">
-            <span class="tag {{ c.priority }}">{{ c.priority }}</span>
+            <span class="tag {{ c.priority }}">{{ {"high": "prioritaire", "medium": "utile", "low": "optionnel"}.get(c.priority|lower, c.priority) }}</span>
             <span class="sec">{{ c.section }}</span>
           </div>
           <div class="was">{{ c.current }}</div>
@@ -180,11 +181,13 @@
     {% endif %}
 
     <div class="card">
-      <h2>Présélection</h2>
-      <div class="foot">{{ r._shortlist_reason }}</div>
-      <ul style="margin-top:8px">
-        {% for p in r._shortlist %}<li><code>{{ p }}</code></li>{% endfor %}
-      </ul>
+      <details>
+        <summary>Comment ce CV a été choisi</summary>
+        <div class="foot">{{ r._shortlist_reason }}</div>
+        <ul style="margin-top:8px">
+          {% for p in r._shortlist %}<li><code>{{ p }}</code></li>{% endfor %}
+        </ul>
+      </details>
     </div>
   {% endif %}
 </div>

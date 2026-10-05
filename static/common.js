@@ -49,9 +49,12 @@ const STATUS_FR = {
 
 // jobs.stage, for the places that show a posting nobody has acted on yet
 const STAGE_FR = {
-  sourced: "collectée", filtered: "écartée au pré-filtre", candidate: "en attente",
+  sourced: "collectée", filtered: "écartée avant lecture", candidate: "en attente",
   matched: "évaluée", tailored: "CV préparé", skipped: "écartée", error: "erreur"
 };
+
+// jobs.source, as the person reads it; unknown boards fall back to the raw name
+const SOURCE_FR = { manual: "saisie à la main", greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby" };
 
 function ago(ts) {
   if (!ts) return "";
