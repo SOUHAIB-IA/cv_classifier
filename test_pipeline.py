@@ -804,6 +804,8 @@ def main():
     print("\n12. photo, and never an em dash")
     check("the CV template has no em dash", "—" not in (HERE / "templates" / "cv.html").read_text())
     check("the model is told never to write one", "Never use the em dash" in matcher.ANALYSE_SYSTEM)
+    check("the model explains in French, whatever the ad's language",
+          "Write every explanation\nin French" in matcher.ANALYSE_SYSTEM)
     for raw, want in [("Engineer — Acme", "Engineer, Acme"), ("LLM—RAG", "LLM-RAG"),
                       ("Essentials – Coursera", "Essentials, Coursera"),
                       ("09/2023 – 06/2026", "09/2023 – 06/2026")]:

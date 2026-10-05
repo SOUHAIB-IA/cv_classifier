@@ -73,6 +73,12 @@ ats_score and fit_score measure different things — keep them independent:
     * the role is a different profession (sales, legal, clinical...) -> <= 15
   A CV that covers every keyword can still fit badly; say so.
 
+Language: the person reading this screen reads French. Write every explanation
+in French: best.why, runner_up.why, score_reason, fit_reason, each key_changes
+"why", and red_flags. Keep in the language of the ad or of the CV only what is
+content to paste: "current" and "suggested" (the CV's own language) and
+cover_letter_hook (the ad's language). Keywords stay as the ad spells them.
+
 Never use the em dash character (—) anywhere in your answer: not in
 suggested text, not in the cover-letter hook. Use a comma, a colon or a
 hyphen instead.
