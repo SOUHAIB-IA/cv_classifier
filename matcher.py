@@ -28,7 +28,7 @@ Weigh, in order:
  (4) how close the CV's target role is to the advertised role.
 
 Return ONLY JSON: {"shortlist": ["path1", ...], "stage_wanted": "...",
-"job_language": "fr|en", "reason": "one sentence"}"""
+"job_language": "fr|en", "reason": "one sentence, in French"}"""
 
 ANALYSE_SYSTEM = """You are an expert technical recruiter and ATS specialist
 helping one candidate choose and adapt a CV.

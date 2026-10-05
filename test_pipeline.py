@@ -806,6 +806,7 @@ def main():
     check("the model is told never to write one", "Never use the em dash" in matcher.ANALYSE_SYSTEM)
     check("the model explains in French, whatever the ad's language",
           "Write every explanation\nin French" in matcher.ANALYSE_SYSTEM)
+    check("the shortlist reason is in French too", "one sentence, in French" in matcher.SHORTLIST_SYSTEM)
     for raw, want in [("Engineer — Acme", "Engineer, Acme"), ("LLM—RAG", "LLM-RAG"),
                       ("Essentials – Coursera", "Essentials, Coursera"),
                       ("09/2023 – 06/2026", "09/2023 – 06/2026")]:
