@@ -31,3 +31,9 @@ graphify-out/
 # and icon catalogues do not belong in a CV router's public history. Reinstall
 # with: git clone --depth 1 <that repo> && cp -r .claude/skills/ui-ux-pro-max ...
 .claude/skills/ui-ux-pro-max/
+
+# UX review screenshots: they are captures of the running app with the real
+# collection in it, so they hold company names, application history, a phone
+# number and absolute paths. The review that references them is committed; the
+# pictures are not.
+ux-review-shots/
