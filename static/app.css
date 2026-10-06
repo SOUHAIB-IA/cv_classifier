@@ -417,6 +417,15 @@ table.data td:nth-child(4), table.data td:nth-child(5), table.data td:nth-child(
 .wstep.done .num { font-size: 0; }
 .wstep.done .num::after { font-size: 15px; }
 .wstep .state { color: var(--ok); font-size: 12.5px; font-weight: 600; }
+/* Title, "Fait", "Modifier": the same row on every step, so the mention is
+   never beside the button on one and under it on the next. */
+.whead { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+.whead h2 { margin: 0; }
+.wstep .wdetail { margin-top: var(--s1); }
+.wedit { display: none; background: none; border: 0; padding: 0; font-size: 12.5px;
+         font-weight: 500; color: var(--accent); text-decoration: underline; }
+.wstep.done .wedit { display: inline; }
+.wstep.done:not(.open) .wdetail { display: none; }
 
 /* The folder choice on the welcome page. Rows rather than a dropdown: the
    count is the thing that identifies the right folder, and a dropdown hides

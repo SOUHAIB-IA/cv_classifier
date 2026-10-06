@@ -11,9 +11,24 @@ async function paintSteps() {
     if (!li) return;
     li.classList.toggle("done", st.done);
     li.classList.toggle("now", !!st.current);
+    if (!st.done) setOpen(li, false);          // an unfinished step is never folded
     if (tag) tag.textContent = st.done ? "Fait" : "";
+    // one primary action on the page: the step you are on
+    li.querySelectorAll("[data-lead]").forEach(b => b.classList.toggle("primary", !!st.current));
   });
 }
+
+// A finished step is folded to its head; "Modifier" opens it again.
+function setOpen(li, open) {
+  li.classList.toggle("open", open);
+  const b = li.querySelector(".wedit");
+  if (b) { b.setAttribute("aria-expanded", String(open)); b.textContent = open ? "Replier" : "Modifier"; }
+}
+
+document.querySelectorAll(".wedit").forEach(b => b.addEventListener("click", () => {
+  const li = document.getElementById(b.dataset.edit);
+  setOpen(li, !li.classList.contains("open"));
+}));
 
 // Where the CVs are. Offered, not typed: an absolute path is not something to
 // ask of someone who is here because they do not want a terminal. The PDF count

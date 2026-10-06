@@ -22,15 +22,25 @@
   {# The steps carry their own action. A checklist that only names what is
      missing sends the reader hunting for the place to fix it. #}
   <ol class="steps-big">
+    {# Each step is a head (title, "Fait", "Modifier") and a detail. A finished
+       step shows only its head, so the page of a finished setup does not look
+       like a setup still to do. The lead button is primary only on the current
+       step; welcome.js sets that, because "current" is read from the state. #}
     <li class="wstep" id="w1">
       <span class="num" aria-hidden="true">1</span>
       <div class="body">
-        <h2>Ton nom et ton modèle</h2>
-        <p>Ton nom sert à reconnaître tes CV parmi d'autres. Le modèle fait le
-          travail de lecture, avec ta clé ou ton abonnement.</p>
-        <div class="acts">
-          <a class="btn primary" href="/settings">Ouvrir les réglages</a>
+        <div class="whead">
+          <h2>Ton nom et ton modèle</h2>
           <span class="state" id="w1state"></span>
+          <button type="button" class="wedit" data-edit="w1" aria-expanded="false"
+                  aria-controls="w1detail">Modifier</button>
+        </div>
+        <div class="wdetail" id="w1detail">
+          <p>Ton nom sert à reconnaître tes CV parmi d'autres. Le modèle fait le
+            travail de lecture, avec ta clé ou ton abonnement.</p>
+          <div class="acts">
+            <a class="btn" data-lead href="/settings">Ouvrir les réglages</a>
+          </div>
         </div>
       </div>
     </li>
@@ -38,43 +48,55 @@
     <li class="wstep" id="w2">
       <span class="num" aria-hidden="true">2</span>
       <div class="body">
-        <h2>Tes CV</h2>
-        <p>Dis-lui où ils sont. Le nombre de PDF t'indique le bon dossier.
-          Ils ne quittent pas ta machine.</p>
+        <div class="whead">
+          <h2>Tes CV</h2>
+          <span class="state" id="w2state"></span>
+          <button type="button" class="wedit" data-edit="w2" aria-expanded="false"
+                  aria-controls="w2detail">Modifier</button>
+        </div>
+        <div class="wdetail" id="w2detail">
+          <p>Dis-lui où ils sont. Le nombre de PDF t'indique le bon dossier.
+            Ils ne quittent pas ta machine.</p>
 
-        {# Filled by welcome.js. Nobody can be asked to type an absolute path,
-           so the usual places are offered with their count instead. #}
-        <div class="folders" id="folders" role="radiogroup"
-             aria-label="Où sont tes CV">
-          <div class="fhelp" style="margin:0">Recherche des dossiers…</div>
+          {# Filled by welcome.js. Nobody can be asked to type an absolute path,
+             so the usual places are offered with their count instead. #}
+          <div class="folders" id="folders" role="radiogroup"
+               aria-label="Où sont tes CV">
+            <div class="fhelp" style="margin:0">Recherche des dossiers…</div>
+          </div>
+          <div class="pathrow">
+            <input id="f-other" placeholder="…ou colle le chemin d'un autre dossier"
+                   aria-label="Un autre dossier">
+            <button class="small" id="b-other">Utiliser</button>
+          </div>
+          <div class="acts">
+            <button data-lead id="b-index">Lire mes CV</button>
+            <span class="fhelp" style="margin:0" id="index-hint">Compte une à deux
+              minutes pour une vingtaine de CV.</span>
+          </div>
+          <div class="progress" id="index-progress" hidden role="status" aria-live="polite">
+            <div class="bar"><i id="index-bar" style="width:0%"></i></div>
+            <div class="line"><span id="index-count"></span><span id="index-note"></span></div>
+          </div>
         </div>
-        <div class="pathrow">
-          <input id="f-other" placeholder="…ou colle le chemin d'un autre dossier"
-                 aria-label="Un autre dossier">
-          <button class="small" id="b-other">Utiliser</button>
-        </div>
-        <div class="acts">
-          <button class="primary" id="b-index">Lire mes CV</button>
-          <span class="fhelp" style="margin:0" id="index-hint">Compte une à deux
-            minutes pour une vingtaine de CV.</span>
-        </div>
-        <div class="progress" id="index-progress" hidden role="status" aria-live="polite">
-          <div class="bar"><i id="index-bar" style="width:0%"></i></div>
-          <div class="line"><span id="index-count"></span><span id="index-note"></span></div>
-        </div>
-        <div class="state" id="w2state"></div>
       </div>
     </li>
 
     <li class="wstep" id="w3">
       <span class="num" aria-hidden="true">3</span>
       <div class="body">
-        <h2>Ta première annonce</h2>
-        <p>Colle une offre complète. Tu reçois le CV à envoyer, un score, et la
-          liste de ce qu'il faut changer.</p>
-        <div class="acts">
-          <a class="btn primary" href="/">Analyser une annonce</a>
+        <div class="whead">
+          <h2>Ta première annonce</h2>
           <span class="state" id="w3state"></span>
+          <button type="button" class="wedit" data-edit="w3" aria-expanded="false"
+                  aria-controls="w3detail">Modifier</button>
+        </div>
+        <div class="wdetail" id="w3detail">
+          <p>Colle une offre complète. Tu reçois le CV à envoyer, un score, et la
+            liste de ce qu'il faut changer.</p>
+          <div class="acts">
+            <a class="btn" data-lead href="/">Analyser une annonce</a>
+          </div>
         </div>
       </div>
     </li>
