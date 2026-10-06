@@ -185,6 +185,28 @@
         </ul>
       </details>
     </div>
+
+    {# The verdict and the ad travel with the page, so following an offer needs
+       no second model call and no state kept on the server. #}
+    <script type="application/json" id="result-data">{{ {"job": job, "result": r}|tojson }}</script>
+    <div class="card" id="result-actions">
+      <h2>Et maintenant ?</h2>
+      <div class="acts">
+        <a class="btn primary" id="a-open" target="_blank" rel="noopener"
+           href="/cv/file?path={{ r.best.path|urlencode }}">Ouvrir le CV</a>
+        <button id="a-reveal">Montrer le fichier</button>
+        <button id="a-follow">Suivre cette candidature</button>
+      </div>
+      <form id="follow-form" hidden style="margin-top:14px">
+        <div class="fhelp">Pour la retrouver dans ton suivi, il faut son nom.</div>
+        <div class="acts">
+          <input id="f-company" placeholder="Entreprise" required style="max-width:240px">
+          <input id="f-title" placeholder="Poste" required style="max-width:320px">
+          <button class="primary" type="submit">Suivre</button>
+        </div>
+      </form>
+      <div class="hint" id="follow-done" hidden role="status"></div>
+    </div>
   {% endif %}
 </div>
 <div class="toast" id="toast"></div>

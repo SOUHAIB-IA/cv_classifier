@@ -981,6 +981,45 @@ def main():
     jid = r.json().get("job_id", "")
     check("a job can be added by hand", r.status_code == 200 and jid.startswith("manual:"))
 
+    # ---- the actions under an analysis result on /
+    cv = "2-Graduate/AI-ML-Engineering/cv-1.pdf"
+    r = client.get("/cv/file", params={"path": cv})
+    check("a CV of the collection opens in the browser",
+          r.status_code == 200 and r.headers["content-type"] == "application/pdf")
+    check("a path outside the collection is refused, not served",
+          client.get("/cv/file", params={"path": "../../etc/passwd"}).status_code == 404)
+    check("showing a CV needs the X-CV-Router header",
+          client.post("/api/cv/reveal", json={"path": cv}).status_code == 403)
+    check("showing a CV outside the collection is refused",
+          client.post("/api/cv/reveal", headers=H, json={"path": "../x.pdf"}).status_code == 404)
+
+    ad = "We build LLM and RAG systems in Python with PyTorch and Docker. " * 2
+    res = {"best": {"path": cv}, "fit_score": 91, "ats_score": 70, "job_language": "en",
+           "fit_reason": "strong", "key_changes": [{"section": "Title", "suggested": "x"}]}
+    body = {"jd": ad, "company": "Follow Co", "title": "ML Engineer", "result": res}
+    check("following needs the X-CV-Router header",
+          client.post("/api/follow", json=body).status_code == 403)
+    check("following asks for a company and a title",
+          client.post("/api/follow", headers=H, json={**body, "company": ""}).status_code == 400)
+    check("following refuses a CV that is not in the collection",
+          client.post("/api/follow", headers=H,
+                      json={**body, "result": {**res, "best": {"path": "nope.pdf"}}}).status_code == 400)
+    r = client.post("/api/follow", headers=H, json=body)
+    fj = r.json().get("job_id", "")
+    check("an analysed ad can be followed", r.status_code == 200 and fj.startswith("manual:")
+          and r.json()["already"] is False, r.text[:100])
+    row = DB(pcfg.db).one("SELECT status, decision, fit_score FROM applications WHERE job_id=?", fj)
+    check("it lands in the review queue even with a fit above the auto threshold",
+          row and row["status"] == "review" and row["decision"] == "review" and row["fit_score"] == 91, row)
+    check("the verdict is stored, so the job page needs no second analysis",
+          DB(pcfg.db).one("SELECT fit_score FROM matches WHERE job_id=?", fj)["fit_score"] == 91)
+    DB(pcfg.db).conn.execute("UPDATE applications SET status='applied' WHERE job_id=?", (fj,))
+    DB(pcfg.db).conn.commit()
+    r = client.post("/api/follow", headers=H, json=body)
+    check("following twice changes nothing: a status that moved on stays",
+          r.json()["already"] is True and DB(pcfg.db).one(
+              "SELECT status FROM applications WHERE job_id=?", fj)["status"] == "applied", r.text[:100])
+
     variant = "2-Graduate/AI-ML-Engineering/cv-0.pdf"
     lines = ["Ada 0", "AI Engineer"] + testkit.SAMPLE_TEXT[3:]
     extracted = {"name": "Ada 0", "headline": "AI Engineer", "contact": {},

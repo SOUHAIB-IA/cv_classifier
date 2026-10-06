@@ -629,6 +629,85 @@ def add_job(payload: dict, x_cv_router: str | None = Header(default=None)):
     return {"job_id": jid}
 
 
+# ------------------------------------------- a CV from the collection, by path --
+# The analysis on / names a CV in cv_root, not a tailored CV of a job, so the
+# job routes below (which look a job up) cannot serve it. The path is checked
+# against the index: only a CV cv-router has read can be opened, and nothing
+# outside cv_root can be named.
+def _source_cv(cfg, rel: str) -> Path:
+    if rel not in cr.Index(cfg).records:
+        raise HTTPException(404, "ce CV n'est pas dans ta collection")
+    pdf = (cfg.cv_root / rel).resolve()
+    if not pdf.is_file():
+        raise HTTPException(404, "le fichier n'est plus là : relance la lecture de tes CV")
+    return pdf
+
+
+@router.get("/cv/file")
+def cv_file(path: str):
+    pdf = _source_cv(_ctx()[1], path)
+    return FileResponse(pdf, media_type="application/pdf",
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/cv/reveal")
+def cv_reveal(payload: dict, x_cv_router: str | None = Header(default=None)):
+    """Same as job_reveal below, for a CV of the collection."""
+    _guard(x_cv_router)
+    pdf = _source_cv(_ctx()[1], payload.get("path", ""))
+    try:
+        env = {**os.environ, **SUB.display_env()}
+    except SUB.NoDisplay as e:
+        raise HTTPException(400, str(e))
+    opened, selected = desktop.reveal(pdf, env=env)
+    if not opened:
+        raise HTTPException(400, f"aucun dossier ne peut s'ouvrir ici. Le fichier est : {pdf}")
+    return {"ok": True, "selected": selected, "path": str(pdf)}
+
+
+@router.post("/api/follow")
+def follow(payload: dict, x_cv_router: str | None = Header(default=None)):
+    """Keep track of an analysed ad, without asking the model anything again.
+
+    The verdict already exists on the page, so it is stored as it is, and the
+    job lands in the review queue whatever its score: decide() would send a
+    high fit to "pending", which tailors a CV on its own, and following an
+    offer is not a request for that. An offer already followed is left alone,
+    because its status may have moved on since.
+    """
+    _guard(x_cv_router)
+    jd = (payload.get("jd") or "").strip()
+    company = (payload.get("company") or "").strip()
+    title = (payload.get("title") or "").strip()
+    r = payload.get("result")
+    if len(jd) < 40 or not company or not title or not isinstance(r, dict):
+        raise HTTPException(400, "il manque l'entreprise, le poste ou l'annonce")
+    pcfg, cfg, db = _ctx()
+    variant = (r.get("best") or {}).get("path", "")
+    if variant not in cr.Index(cfg).records:
+        raise HTTPException(400, "ce résultat ne désigne aucun CV de ta collection")
+    jid = F.add_manual(db, jd, company=company, title=title)
+    if db.one("SELECT 1 FROM applications WHERE job_id=?", jid):
+        return {"job_id": jid, "already": True}
+    lang = r.get("job_language") if r.get("job_language") in ("fr", "en") else ""
+    fit = max(0, min(100, int(r.get("fit_score") or 0)))
+    ats = max(0, min(100, int(r.get("ats_score") or 0)))
+    edits = [c for c in (r.get("key_changes") or []) if isinstance(c, dict)]
+    with db.tx():
+        db.save_match(jid, {
+            "fit_score": fit, "ats_score": ats, "recommended_variant": variant,
+            "recommended_account": lang, "suggested_edits": edits,
+            "decision": "review", "reason": str(r.get("fit_reason", "")), "raw": r})
+        db.set_stage(jid, "review", status="processed", language=lang)
+        db.upsert_application(
+            jid, decision="review", status="review", fit_score=fit, language=lang,
+            account=lang, cv_variant=O._variant_label(variant),
+            notes="suivie depuis l'analyse")
+        db.event("review", jid, followed=True)
+    TR.export(db, pcfg.tracker_xlsx)
+    return {"job_id": jid, "already": False}
+
+
 # --------------------------------------------------------------------- job --
 @router.get("/job/{job_id:path}/cv.pdf")
 def cv_pdf(job_id: str, download: int = 0):

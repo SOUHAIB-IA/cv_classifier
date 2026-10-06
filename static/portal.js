@@ -89,3 +89,55 @@ if (bIndex) {
     if (s.state === "running") { paint(s); timer = setInterval(poll, 1500); }
   }).catch(() => {});
 }
+
+
+// ------------------------------------------------- what to do with a result --
+// "Ouvrir" is a plain link. The other two go through the same helpers as the
+// rest of the application: api() carries the header the server asks for.
+const actions = document.getElementById("result-actions");
+
+if (actions) {
+  const data = JSON.parse(document.getElementById("result-data").textContent);
+  const form = document.getElementById("follow-form");
+  const done = document.getElementById("follow-done");
+  const follow = document.getElementById("a-follow");
+
+  document.getElementById("a-reveal").onclick = async () => {
+    try {
+      const r = await api("/api/cv/reveal", { path: data.result.best.path });
+      toast(r.selected ? "Le fichier est sélectionné dans la fenêtre qui vient de s'ouvrir."
+                       : "Le dossier est ouvert, le fichier n'est pas sélectionné.");
+    } catch (e) { toast(e.message); }
+  };
+
+  follow.onclick = () => {
+    // the first line of an ad is nearly always the job title
+    const first = data.job.split("\n").map(l => l.trim()).find(Boolean) || "";
+    document.getElementById("f-title").value ||= first.slice(0, 80);
+    form.hidden = false;
+    document.getElementById("f-company").focus();
+  };
+
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const btn = form.querySelector("button");
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");      // the tracker export takes a moment
+    try {
+      const r = await api("/api/follow", {
+        jd: data.job, result: data.result,
+        company: document.getElementById("f-company").value,
+        title: document.getElementById("f-title").value,
+      });
+      form.hidden = true;
+      follow.hidden = true;
+      done.hidden = false;
+      done.innerHTML = (r.already ? "Cette candidature était déjà suivie. " : "C'est suivi. ")
+        + `<a href="/job/${encodeURIComponent(r.job_id)}">Voir la fiche</a>`;
+    } catch (e) {
+      toast(e.message);
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+    }
+  };
+}
