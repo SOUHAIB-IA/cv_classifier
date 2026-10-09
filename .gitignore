@@ -37,3 +37,11 @@ graphify-out/
 # number and absolute paths. The review that references them is committed; the
 # pictures are not.
 ux-review-shots/
+
+# demo video: frames and renders are large and regenerable
+demo-video/out/
+demo-video/*.mp4
+demo-video/*.mp3
+demo-video/*.wav
+demo-video/*.m4a
+demo-video/
